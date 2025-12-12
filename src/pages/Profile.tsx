@@ -1,9 +1,10 @@
+
 import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { updateEmployeePassword, updateEmployeeProfile } from '../services/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { User, Lock, Mail, Briefcase, Calendar, ShieldCheck, Save, Loader2, CheckCircle2, Phone, FileText, UserCircle, Smile, Palette, Check } from 'lucide-react';
+import { User, Lock, Mail, Briefcase, Calendar, ShieldCheck, Save, Loader2, CheckCircle2, Phone, FileText, UserCircle, Smile, Palette, Check, Eye, EyeOff } from 'lucide-react';
 
 const Profile: React.FC = () => {
   const { currentUser, setCurrentUser, themeColor, setThemeColor } = useStore();
@@ -14,6 +15,9 @@ const Profile: React.FC = () => {
   const [loadingPass, setLoadingPass] = useState(false);
   const [successPass, setSuccessPass] = useState(false);
   const [errorPass, setErrorPass] = useState('');
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
 
   // Profile Edit State
   const [isEditing, setIsEditing] = useState(false);
@@ -53,6 +57,8 @@ const Profile: React.FC = () => {
           setSuccessPass(true);
           setPassword('');
           setConfirmPassword('');
+          setShowNewPass(false);
+          setShowConfirmPass(false);
       } catch (err) {
           setErrorPass('Failed to update password');
           console.error(err);
@@ -265,26 +271,62 @@ const Profile: React.FC = () => {
                       </CardTitle>
                   </CardHeader>
                   <CardContent>
+                      {/* Show Current Password Section */}
+                      <div className="space-y-1 mb-6 pb-6 border-b border-slate-100">
+                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Your Current Passcode</label>
+                          <div className="flex items-center gap-3">
+                              <div className="font-mono text-lg font-bold text-slate-800 tracking-widest bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 min-w-[100px] text-center">
+                                  {showCurrentPass ? currentUser.password : '••••'}
+                              </div>
+                              <button 
+                                  type="button" 
+                                  onClick={() => setShowCurrentPass(!showCurrentPass)} 
+                                  className="text-slate-400 hover:text-primary transition-colors p-2 hover:bg-slate-50 rounded-full"
+                                  title={showCurrentPass ? "Hide Passcode" : "Show Passcode"}
+                              >
+                                  {showCurrentPass ? <EyeOff className="w-5 h-5"/> : <Eye className="w-5 h-5"/>}
+                              </button>
+                          </div>
+                      </div>
+
                       <form onSubmit={handleUpdatePassword} className="space-y-4">
                           <div className="space-y-1">
                               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">New Passcode</label>
-                              <input 
-                                  type="password"
-                                  className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm text-slate-800"
-                                  placeholder="Enter new pin..."
-                                  value={password}
-                                  onChange={(e) => setPassword(e.target.value)}
-                              />
+                              <div className="relative">
+                                <input 
+                                    type={showNewPass ? "text" : "password"}
+                                    className="w-full p-3 pr-10 rounded-xl bg-slate-50 focus:bg-white border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm text-slate-900"
+                                    placeholder="Enter new pin..."
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowNewPass(!showNewPass)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                                >
+                                    {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                              </div>
                           </div>
                           <div className="space-y-1">
-                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Confirm Passcode</label>
-                              <input 
-                                  type="password"
-                                  className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm text-slate-800"
-                                  placeholder="Confirm new pin..."
-                                  value={confirmPassword}
-                                  onChange={(e) => setConfirmPassword(e.target.value)}
-                              />
+                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Confirm New Passcode</label>
+                              <div className="relative">
+                                <input 
+                                    type={showConfirmPass ? "text" : "password"}
+                                    className="w-full p-3 pr-10 rounded-xl bg-slate-50 focus:bg-white border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm text-slate-900"
+                                    placeholder="Confirm new pin..."
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowConfirmPass(!showConfirmPass)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                                >
+                                    {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                              </div>
                           </div>
                           
                           {errorPass && <p className="text-red-500 text-xs font-bold">{errorPass}</p>}
@@ -326,7 +368,7 @@ const Profile: React.FC = () => {
                                           type="text"
                                           value={editName}
                                           onChange={(e) => setEditName(e.target.value)}
-                                          className="w-full p-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-medium text-slate-800"
+                                          className="w-full p-3 rounded-xl border border-slate-200 bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-medium text-slate-900"
                                       />
                                   </div>
                                   <div className="space-y-1.5">
@@ -337,7 +379,7 @@ const Profile: React.FC = () => {
                                           onChange={(e) => setEditDesignation(e.target.value)}
                                           disabled={currentUser.role !== 'Admin'} 
                                           placeholder={currentUser.role !== 'Admin' ? "Contact manager to update" : "e.g. Senior Product Designer"}
-                                          className={`w-full p-3 rounded-xl border border-slate-200 outline-none transition-all font-medium ${currentUser.role !== 'Admin' ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : 'focus:border-primary focus:ring-4 focus:ring-primary/10 text-slate-800'}`}
+                                          className={`w-full p-3 rounded-xl border border-slate-200 outline-none transition-all font-medium ${currentUser.role !== 'Admin' ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : 'bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 text-slate-900'}`}
                                       />
                                       {currentUser.role !== 'Admin' && <p className="text-[10px] text-slate-400">Only administrators can update job titles.</p>}
                                   </div>
@@ -358,7 +400,7 @@ const Profile: React.FC = () => {
                                           value={editPhone}
                                           onChange={(e) => setEditPhone(e.target.value)}
                                           placeholder="+1 (555) 000-0000"
-                                          className="w-full p-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-medium text-slate-800"
+                                          className="w-full p-3 rounded-xl border border-slate-200 bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-medium text-slate-900"
                                       />
                                   </div>
                               </div>
@@ -369,7 +411,7 @@ const Profile: React.FC = () => {
                                       value={editBio}
                                       onChange={(e) => setEditBio(e.target.value)}
                                       placeholder="Tell us a little about yourself..."
-                                      className="w-full p-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-medium min-h-[120px] resize-none text-slate-800"
+                                      className="w-full p-3 rounded-xl border border-slate-200 bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-medium min-h-[120px] resize-none text-slate-900"
                                   />
                               </div>
 

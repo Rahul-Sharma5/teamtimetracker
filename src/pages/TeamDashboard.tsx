@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { getAllAttendance, getEmployees, getAllBreaks, getLeaves, getCompanySettings, updateCompanySettings, updateLeaveStatus, getAnnouncements, createAnnouncement, deleteAnnouncement } from '../services/firestore';
 import { AttendanceRecord, BreakRecord, LeaveRecord, CompanySettings, LocationData, Announcement, Employee } from '../types';
-import { Users, Coffee, CalendarOff, Clock, Filter, ChevronRight, Calendar, MapPin, Navigation, Save, Loader2, Globe, ExternalLink, Download, FileText, Utensils, CheckCircle2, AlertCircle, Timer, ArrowRight, Check, X, ShieldCheck, Megaphone, Trash2, Bell, Map as MapIcon, LocateFixed } from 'lucide-react';
+import { Users, Coffee, CalendarOff, Clock, Filter, ChevronRight, Calendar, MapPin, Navigation, Save, Loader2, Globe, ExternalLink, Download, FileText, Utensils, CheckCircle2, AlertCircle, Timer, ArrowRight, Check, X, ShieldCheck, Megaphone, Trash2, Bell, Map as MapIcon, LocateFixed, RotateCcw, Lock, Crosshair } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 
@@ -16,7 +16,6 @@ interface LeaveCardItemProps {
   onAction: (id: string, status: 'approved' | 'rejected', note?: string) => void;
 }
 
-// Separate component to prevent rendering issues and maintain focus
 const LeaveCardItem: React.FC<LeaveCardItemProps> = ({ 
   rec, 
   showActions, 
@@ -161,6 +160,8 @@ const TeamDashboard: React.FC = () => {
   const [newLocationName, setNewLocationName] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
   const [newLogoUrl, setNewLogoUrl] = useState('');
+  const [newLat, setNewLat] = useState<number>(0);
+  const [newLng, setNewLng] = useState<number>(0);
   
   const [employees, setEmployees] = useState<Record<string, Employee>>({}); 
   const [loading, setLoading] = useState(true);
@@ -204,6 +205,8 @@ const TeamDashboard: React.FC = () => {
         setNewLocationName(settings.locationName);
         setNewTeamName(settings.teamName || 'TeamTime');
         setNewLogoUrl(settings.teamLogoUrl || '');
+        setNewLat(settings.latitude);
+        setNewLng(settings.longitude);
       }
     } catch (e) {
       console.error(e);
@@ -225,6 +228,9 @@ const TeamDashboard: React.FC = () => {
   // --- SETTINGS HANDLERS ---
 
   const handleSetCurrentLocation = () => {
+      const isManagerOrLead = currentUser?.role === 'Manager' || currentUser?.role === 'Team Lead' || currentUser?.role === 'Admin';
+      if (!isManagerOrLead) return;
+
       if (!navigator.geolocation) {
           alert("Geolocation is not supported by your browser");
           return;
@@ -235,28 +241,12 @@ const TeamDashboard: React.FC = () => {
       navigator.geolocation.getCurrentPosition(async (position) => {
           const { latitude, longitude } = position.coords;
           
-          try {
-              const updatedData = {
-                  latitude,
-                  longitude,
-                  radius: newRadius,
-                  locationName: newLocationName || 'Custom Office Location',
-                  teamName: newTeamName,
-                  teamLogoUrl: newLogoUrl
-              };
-              
-              await updateCompanySettings(updatedData);
-              
-              const updated = await getCompanySettings();
-              setLocalSettings(updated);
-              setCompanySettings(updated); // Update Global Store
-              alert("Location updated successfully!");
-          } catch (err) {
-              console.error("Failed to save settings", err);
-              alert("Failed to save.");
-          } finally {
-              setIsUpdatingLocation(false);
-          }
+          // Update inputs instead of saving immediately
+          setNewLat(latitude);
+          setNewLng(longitude);
+          setIsUpdatingLocation(false);
+          alert("GPS Coordinates captured! Review the details and click 'Save Config' to apply.");
+          
       }, (error) => {
           console.error(`Geo error: ${error.message}`);
           alert("Could not fetch location. Check permissions.");
@@ -269,8 +259,8 @@ const TeamDashboard: React.FC = () => {
       setIsUpdatingLocation(true);
       try {
           const updatedData = {
-              latitude: companySettings.latitude,
-              longitude: companySettings.longitude,
+              latitude: newLat,
+              longitude: newLng,
               radius: newRadius,
               locationName: newLocationName,
               teamName: newTeamName,
@@ -290,7 +280,38 @@ const TeamDashboard: React.FC = () => {
       }
   };
 
-  // --- END SETTINGS HANDLERS ---
+  const handleResetLocation = async () => {
+      if (!confirm("Reset office location to default (Logix Cyber Park)?")) return;
+      setIsUpdatingLocation(true);
+      try {
+          const defaultSettings = {
+              latitude: 28.6273928,
+              longitude: 77.3725545,
+              radius: 300,
+              locationName: 'Logix Cyber Park (Default)',
+              teamName: 'TeamTime',
+              teamLogoUrl: ''
+          };
+          await updateCompanySettings(defaultSettings);
+          const updated = await getCompanySettings();
+          setLocalSettings(updated);
+          setCompanySettings(updated);
+          
+          // Update form
+          setNewLat(defaultSettings.latitude);
+          setNewLng(defaultSettings.longitude);
+          setNewRadius(300);
+          setNewLocationName(defaultSettings.locationName);
+          
+          alert("Location reset to default.");
+      } catch(e) {
+          console.error(e);
+      } finally {
+          setIsUpdatingLocation(false);
+      }
+  }
+
+  // ... (rest of methods)
 
   const handleLeaveAction = async (id: string, status: 'approved' | 'rejected', note?: string) => {
       if (!currentUser) return;
@@ -414,10 +435,10 @@ const TeamDashboard: React.FC = () => {
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371e3; 
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+    const φ1 = (Number(lat1) * Math.PI) / 180;
+    const φ2 = (Number(lat2) * Math.PI) / 180;
+    const Δφ = ((Number(lat2) - Number(lat1)) * Math.PI) / 180;
+    const Δλ = ((Number(lon2) - Number(lon1)) * Math.PI) / 180;
     const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c; 
@@ -426,7 +447,7 @@ const TeamDashboard: React.FC = () => {
   const LocationIcon = ({ loc }: { loc?: LocationData }) => {
       if (!loc) return <span title="No location data" className="text-slate-300 text-[10px]">-</span>;
       
-      const url = `https://mappls.com/@${loc.lat},${loc.lng},18z`;
+      const url = `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`;
       let distanceText = "";
       if (!loc.inOffice && companySettings) {
           const dist = calculateDistance(loc.lat, loc.lng, companySettings.latitude, companySettings.longitude);
@@ -450,9 +471,8 @@ const TeamDashboard: React.FC = () => {
       );
   };
 
-  // --- Renderers ---
-
   const renderAttendanceCards = () => {
+    // ... same logic
     const records = getFilteredAttendance();
     const isToday = filterDate === new Date().toISOString().split('T')[0];
 
@@ -560,6 +580,7 @@ const TeamDashboard: React.FC = () => {
   };
 
   const renderBreaksCards = () => {
+    // ... same logic
     const records = getFilteredBreaks();
     if (records.length === 0) {
         return (
@@ -730,6 +751,32 @@ const TeamDashboard: React.FC = () => {
                               </div>
                           </div>
 
+                          {/* Coordinates Inputs - NEW: Allows manual entry for remote setup */}
+                          <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Latitude</label>
+                                  <input 
+                                      type="number" 
+                                      value={newLat}
+                                      onChange={(e) => setNewLat(parseFloat(e.target.value))}
+                                      step="0.000001"
+                                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                                      disabled={!isManagerOrLead}
+                                  />
+                              </div>
+                              <div className="space-y-2">
+                                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Longitude</label>
+                                  <input 
+                                      type="number" 
+                                      value={newLng}
+                                      onChange={(e) => setNewLng(parseFloat(e.target.value))}
+                                      step="0.000001"
+                                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                                      disabled={!isManagerOrLead}
+                                  />
+                              </div>
+                          </div>
+
                           {/* Radius Slider */}
                           <div className="space-y-4">
                               <div className="flex justify-between items-center">
@@ -758,13 +805,16 @@ const TeamDashboard: React.FC = () => {
                               {/* Blue GPS Button - Enabled for ALL users */}
                               <Button 
                                   onClick={handleSetCurrentLocation}
-                                  disabled={isUpdatingLocation}
-                                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-xl font-bold shadow-lg shadow-blue-100 flex items-center justify-center text-sm transition-transform active:scale-95"
+                                  disabled={isUpdatingLocation || !isManagerOrLead}
+                                  className={`w-full py-6 rounded-xl font-bold flex items-center justify-center text-sm transition-transform active:scale-95 shadow-lg
+                                      ${!isManagerOrLead 
+                                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none border border-slate-200' 
+                                          : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-100'}`}
                               >
-                                  {isUpdatingLocation ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <LocateFixed className="w-5 h-5 mr-2" />}
-                                  Mark Territory (Use My GPS)
+                                  {isUpdatingLocation ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Crosshair className="w-5 h-5 mr-2" />}
+                                  {isManagerOrLead ? 'Use My Current GPS Position' : 'Restricted to Admin/Manager'}
                               </Button>
-                              <p className="text-center text-[10px] text-slate-400">*Stand at the office center before clicking this.</p>
+                              {isManagerOrLead && <p className="text-center text-[10px] text-slate-400">*Stand at the office center before clicking this.</p>}
 
                               {/* Divider & Secondary Config - Restricted to Admin/Manager */}
                               {isManagerOrLead && (
@@ -775,14 +825,26 @@ const TeamDashboard: React.FC = () => {
                                           <div className="flex-grow border-t border-slate-100"></div>
                                       </div>
 
-                                      <Button 
-                                          onClick={handleSaveSettings}
-                                          disabled={isUpdatingLocation || !isManagerOrLead}
-                                          variant="secondary"
-                                          className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-6 rounded-xl font-bold flex items-center justify-center border border-slate-200 transition-colors"
-                                      >
-                                          <Save className="w-4 h-4 mr-2" /> Update Config Only
-                                      </Button>
+                                      <div className="grid grid-cols-2 gap-3">
+                                          <Button 
+                                              onClick={handleResetLocation}
+                                              disabled={isUpdatingLocation}
+                                              variant="secondary"
+                                              className="bg-white text-slate-500 border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-100 h-14 rounded-xl font-bold"
+                                              title="Reset to Defaults"
+                                          >
+                                              <RotateCcw className="w-4 h-4 mr-2" /> Reset
+                                          </Button>
+                                          
+                                          <Button 
+                                              onClick={handleSaveSettings}
+                                              disabled={isUpdatingLocation || !isManagerOrLead}
+                                              variant="secondary"
+                                              className="bg-slate-100 hover:bg-slate-200 text-slate-700 h-14 rounded-xl font-bold border border-slate-200"
+                                          >
+                                              <Save className="w-4 h-4 mr-2" /> Save Config
+                                          </Button>
+                                      </div>
                                   </>
                               )}
                           </div>
@@ -790,7 +852,8 @@ const TeamDashboard: React.FC = () => {
                       
                       {!isManagerOrLead && (
                           <div className="mt-4 p-3 bg-slate-50 text-slate-500 text-xs font-medium rounded-lg text-center border border-slate-100">
-                              Note: You can update the location coordinates using GPS, but radius and name settings are restricted to Admins.
+                              <Lock className="w-3 h-3 inline mr-1 mb-0.5" />
+                              Location settings are read-only for team members. Contact an admin to update the office geofence.
                           </div>
                       )}
                   </CardContent>
@@ -800,6 +863,7 @@ const TeamDashboard: React.FC = () => {
   };
 
   const renderLeavesCards = () => {
+    // ... same logic
     const records = getFilteredLeaves();
     
     // Sort: Pending first, then by date desc
@@ -841,6 +905,7 @@ const TeamDashboard: React.FC = () => {
     );
   };
 
+  // ... (renderAnnouncements same as before)
   const renderAnnouncements = () => {
       const canManageAnnouncements = currentUser?.role === 'Admin' || currentUser?.role === 'Manager';
 
@@ -1010,8 +1075,8 @@ const TeamDashboard: React.FC = () => {
         <TabButton id="breaks" label="Breaks" icon={Coffee} />
         <TabButton id="leaves" label="Leaves" icon={CalendarOff} />
         {(currentUser?.role === 'Manager' || currentUser?.role === 'Team Lead' || currentUser?.role === 'Admin') && <TabButton id="announcements" label="Notice Board" icon={Megaphone} />}
-        {/* Restored Mappls Zone Tab */}
-        <TabButton id="location" label="Mappls Zone" icon={MapIcon} />
+        {/* Renamed Mappls Zone to Office Zone */}
+        <TabButton id="location" label="Office Zone" icon={MapIcon} />
       </div>
 
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">

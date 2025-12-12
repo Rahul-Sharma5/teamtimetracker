@@ -1,9 +1,10 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { getEmployees, createEmployee, deleteEmployee, updateEmployeeStatus, updateEmployeeProfile } from '../services/firestore';
 import { Employee } from '../types';
-import { Plus, Trash2, User, Mail, Briefcase, Search, X, UserPlus, AlertTriangle, Lock, Calendar, Power, Crown, ShieldCheck, ChevronDown, Edit2 } from 'lucide-react';
+import { Plus, Trash2, User, Mail, Briefcase, Search, X, UserPlus, AlertTriangle, Lock, Calendar, Power, Crown, ShieldCheck, ChevronDown, Edit2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 
@@ -27,6 +28,7 @@ const Employees: React.FC = () => {
   const [newDesignation, setNewDesignation] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newJoiningDate, setNewJoiningDate] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const fetchEmployees = async () => {
     setLoading(true);
@@ -44,8 +46,38 @@ const Employees: React.FC = () => {
     fetchEmployees();
   }, []);
 
+  const checkEmailUnique = (email: string, excludeId?: string) => {
+      const normalized = email.toLowerCase().trim();
+      return !employees.some(e => 
+          e.email.toLowerCase().trim() === normalized && e.id !== excludeId
+      );
+  };
+
+  // Helper to clear form state
+  const resetForm = () => {
+      setNewName('');
+      setNewRole('Employee');
+      setNewEmail('');
+      setNewDesignation('');
+      setNewPassword('');
+      setNewJoiningDate('');
+      setShowPassword(false);
+      setEditingEmployee(null);
+  };
+
+  const handleAddClick = () => {
+      resetForm();
+      setShowAddModal(true);
+  };
+
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!checkEmailUnique(newEmail)) {
+        alert("This email address is already registered. Please use a unique email.");
+        return;
+    }
+
     try {
         await createEmployee({
             name: newName,
@@ -58,13 +90,7 @@ const Employees: React.FC = () => {
             joiningDate: newJoiningDate
         });
         setShowAddModal(false);
-        // Reset form
-        setNewName('');
-        setNewRole('Employee');
-        setNewEmail('');
-        setNewDesignation('');
-        setNewPassword('');
-        setNewJoiningDate('');
+        resetForm();
         await fetchEmployees();
     } catch (err) {
         console.error("Error adding employee", err);
@@ -78,8 +104,17 @@ const Employees: React.FC = () => {
       setNewRole(emp.role);
       setNewEmail(emp.email);
       setNewDesignation(emp.designation || '');
-      setNewPassword(emp.password || '');
+      
+      // SECURITY: Only pre-fill password if editing SELF. 
+      // Admins/Managers should not see others' passwords.
+      if (currentUser?.id === emp.id) {
+          setNewPassword(emp.password || '');
+      } else {
+          setNewPassword(''); // Empty means "Unchanged"
+      }
+      
       setNewJoiningDate(emp.joiningDate || '');
+      setShowPassword(false);
       setShowEditModal(true);
   };
 
@@ -87,15 +122,24 @@ const Employees: React.FC = () => {
       e.preventDefault();
       if (!editingEmployee) return;
 
+      if (!checkEmailUnique(newEmail, editingEmployee.id)) {
+          alert("This email address is already in use by another user.");
+          return;
+      }
+
       try {
           const updates: Partial<Employee> = {
               name: newName,
               role: newRole,
-              email: newEmail, // Note: Usually email shouldn't change if used as ID, but here ID is separate
+              email: newEmail, 
               designation: newDesignation,
-              password: newPassword,
               joiningDate: newJoiningDate
           };
+
+          // Only update password if a new one was entered
+          if (newPassword.trim().length > 0) {
+              updates.password = newPassword;
+          }
 
           await updateEmployeeProfile(editingEmployee.id, updates);
           setShowEditModal(false);
@@ -116,20 +160,16 @@ const Employees: React.FC = () => {
   const canManage = (targetRole: string, targetId: string) => {
       if (!currentUser) return false;
       
-      // 1. Self management - handled by logic, usually you edit self in Profile, but Admin/Manager can edit self here too.
+      // 1. Self management
       if (currentUser.id === targetId) return true;
 
       // 2. Admin Permissions
       if (currentUser.role === 'Admin') {
-          // Admin can manage Managers and Employees.
-          // Cannot manage other Admins (unless self).
           return targetRole !== 'Admin';
       }
 
       // 3. Manager Permissions
       if (currentUser.role === 'Manager') {
-          // Manager can only manage Employees.
-          // Cannot manage other Managers or Admins.
           return targetRole === 'Employee';
       }
 
@@ -137,20 +177,16 @@ const Employees: React.FC = () => {
   };
 
   const handleToggleStatus = async (emp: Employee) => {
-      // Logic check: Can user manage this target?
       if (!canManage(emp.role, emp.id)) {
           alert("You do not have permission to modify this user.");
           return;
       }
       const newStatus = emp.status === 'active' ? 'inactive' : 'active';
       try {
-          // Optimistic update
           setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status: newStatus } : e));
-          
           await updateEmployeeStatus(emp.id, newStatus);
       } catch (err) {
           console.error(err);
-          // Revert on fail
           fetchEmployees();
           alert("Failed to update status.");
       }
@@ -160,7 +196,6 @@ const Employees: React.FC = () => {
       e.preventDefault();
       e.stopPropagation();
       
-      // Hierarchy Check
       if (!canManage(role, id)) {
           alert("You do not have permission to delete this user.");
           return;
@@ -174,7 +209,6 @@ const Employees: React.FC = () => {
       
       const id = employeeToDelete;
       
-      // Handle Self-Deletion
       if (currentUser && currentUser.id === id) {
           try {
              await deleteEmployee(id);
@@ -187,17 +221,13 @@ const Employees: React.FC = () => {
       }
 
       const previousEmployees = [...employees];
-      
-      // 1. Optimistic Update
       setEmployees(prev => prev.filter(emp => emp.id !== id));
       setEmployeeToDelete(null); 
 
       try {
-          // 2. Perform API Call
           await deleteEmployee(id);
       } catch (err) {
           console.error("Error deleting employee:", err);
-          // 3. Revert UI if failed
           setEmployees(previousEmployees);
           alert("Failed to delete employee from database.");
       }
@@ -220,15 +250,13 @@ const Employees: React.FC = () => {
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">People</h2>
           <p className="text-slate-500">Manage your team members and credentials.</p>
         </div>
-        {/* Only Admin & Managers can add */}
         {canAddUsers && (
-          <Button onClick={() => setShowAddModal(true)} className="bg-gradient-to-r from-primary to-primary/80 hover:to-primary text-white shadow-lg shadow-primary/30 rounded-xl px-6 py-6 font-bold transition-all hover:scale-105 active:scale-95">
+          <Button onClick={handleAddClick} className="bg-gradient-to-r from-primary to-primary/80 hover:to-primary text-white shadow-lg shadow-primary/30 rounded-xl px-6 py-6 font-bold transition-all hover:scale-105 active:scale-95">
               <Plus className="w-4 h-4 mr-2" /> Add {isAdmin ? 'User' : 'Employee'}
           </Button>
         )}
       </div>
 
-      {/* Search Bar */}
       <div className="relative max-w-md">
          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-5 w-5" />
          <input 
@@ -248,7 +276,6 @@ const Employees: React.FC = () => {
                 const isTargetAdmin = emp.role === 'Admin';
                 const isTargetManager = emp.role === 'Manager';
                 
-                // Card styling based on role
                 let roleStyle = "bg-slate-100 text-slate-400 border-slate-200";
                 if (isTargetAdmin) roleStyle = "bg-purple-100 text-purple-700 border-purple-200";
                 else if (isTargetManager) roleStyle = "bg-primary/10 text-primary border-primary/20";
@@ -278,7 +305,6 @@ const Employees: React.FC = () => {
                             </div>
                         </div>
                         
-                        {/* Action Buttons based on Hierarchy */}
                         {showActions && (
                             <div className="flex flex-col gap-2">
                                 <button 
@@ -315,6 +341,7 @@ const Employees: React.FC = () => {
                         </div>
                         <div className="flex items-center text-sm text-slate-500">
                             <Lock className="w-4 h-4 mr-2 text-primary" />
+                            {/* Always Masked in List View - Security Requirement */}
                             Passcode: <span className="ml-1 font-mono text-slate-600 tracking-widest">••••</span>
                         </div>
                         {emp.joiningDate && (
@@ -329,7 +356,6 @@ const Employees: React.FC = () => {
         </div>
       )}
 
-      {/* Add / Edit Employee Modal */}
       {(showAddModal || showEditModal) && canAddUsers && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => { setShowAddModal(false); setShowEditModal(false); }}></div>
@@ -381,7 +407,6 @@ const Employees: React.FC = () => {
                 </div>
               </div>
 
-              {/* Designation Field - Hierarchy Check */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 uppercase tracking-wider ml-1">Designation</label>
                 <div className="relative group">
@@ -399,7 +424,6 @@ const Employees: React.FC = () => {
                     disabled={!((currentUser?.role === 'Admin') || (currentUser?.role === 'Manager' && (editingEmployee?.role === 'Employee' || (!editingEmployee && true))))}
                   />
                 </div>
-                {/* Helper text for managers who cant edit self/other managers */}
                 {currentUser?.role === 'Manager' && editingEmployee && editingEmployee.role !== 'Employee' && (
                     <p className="text-[10px] text-slate-400 ml-1">Only Admins can change Manager designations.</p>
                 )}
@@ -415,10 +439,9 @@ const Employees: React.FC = () => {
                         className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-slate-50 border border-transparent text-slate-900 font-bold placeholder-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all outline-none appearance-none"
                         value={newRole}
                         onChange={(e) => setNewRole(e.target.value)}
-                        disabled={!isAdmin} // Only Admins can change roles
+                        disabled={!isAdmin} 
                       >
                         <option value="Employee">Employee</option>
-                        {/* Only Admins can create/assign Managers */}
                         {isAdmin && <option value="Manager">Manager</option>}
                         {isAdmin && <option value="Admin">Admin</option>}
                       </select>
@@ -434,13 +457,20 @@ const Employees: React.FC = () => {
                     <div className="relative group">
                       <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-primary transition-colors" />
                       <input 
-                        required
-                        type="text" // Visible text for ease of admin editing
-                        className="w-full pl-10 pr-3 py-3.5 rounded-xl bg-slate-50 border border-transparent text-slate-900 font-bold placeholder-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all outline-none text-sm"
-                        placeholder="Pin"
+                        required={!showEditModal} // Only required when adding new
+                        type={showPassword ? "text" : "password"}
+                        className="w-full pl-10 pr-10 py-3.5 rounded-xl bg-slate-50 border border-transparent text-slate-900 font-bold placeholder-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all outline-none text-sm"
+                        placeholder={editingEmployee && currentUser?.id !== editingEmployee.id ? "Enter to reset..." : "Pin"}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
                   </div>
                   
@@ -471,7 +501,6 @@ const Employees: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {employeeToDelete && canAddUsers && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-in fade-in" onClick={() => setEmployeeToDelete(null)}></div>

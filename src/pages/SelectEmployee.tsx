@@ -1,9 +1,10 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { getEmployees, createEmployee } from '../services/firestore';
 import { Employee } from '../types';
-import { Loader2, AlertTriangle, ShieldCheck, Search, Lock, X, ChevronRight, Users, UserPlus, Mail, CheckCircle2, Crown, ChevronDown, Palette, Check } from 'lucide-react';
+import { Loader2, AlertTriangle, ShieldCheck, Search, Lock, X, ChevronRight, Users, UserPlus, Mail, CheckCircle2, Crown, ChevronDown, Palette, Check, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 
 // Extracted EmployeeCard to fix type issues with 'key' prop
@@ -79,6 +80,7 @@ const SelectEmployee: React.FC = () => {
   // Login Modal State
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [passwordInput, setPasswordInput] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
   
   // Registration State
@@ -87,6 +89,7 @@ const SelectEmployee: React.FC = () => {
   const [regEmail, setRegEmail] = useState('');
   const [regDesignation, setRegDesignation] = useState(''); // Only used for bootstrap admin
   const [regPassword, setRegPassword] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
   const [regRole, setRegRole] = useState('Employee'); // Default
   const [isRegistering, setIsRegistering] = useState(false);
   
@@ -142,6 +145,7 @@ const SelectEmployee: React.FC = () => {
   const handleCardClick = (emp: Employee) => {
       setSelectedEmployee(emp);
       setPasswordInput('');
+      setShowLoginPassword(false);
       setLoginError('');
   };
 
@@ -166,6 +170,14 @@ const SelectEmployee: React.FC = () => {
     if (!regName || !regPassword) return;
     
     setIsRegistering(true);
+
+    // UNIQUE EMAIL CHECK
+    if (employees.some(e => e.email.toLowerCase() === regEmail.toLowerCase())) {
+        setError("This email address is already registered. Please login.");
+        setIsRegistering(false);
+        return;
+    }
+
     try {
         // If DB is empty, force Admin role.
         const isFirstUser = employees.length === 0;
@@ -190,6 +202,7 @@ const SelectEmployee: React.FC = () => {
         setRegDesignation('');
         setRegPassword('');
         setRegRole('Employee');
+        setShowRegPassword(false);
         
         // Close modal immediately
         setShowRegisterModal(false);
@@ -288,14 +301,23 @@ const SelectEmployee: React.FC = () => {
                     </div>
                     <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Create Passcode</label>
-                        <input 
-                            required
-                            type="password" 
-                            className="w-full px-4 py-3 rounded-xl bg-slate-50 border-2 border-transparent focus:bg-white focus:border-purple-500 focus:outline-none transition-all font-bold text-slate-900"
-                            placeholder="••••"
-                            value={regPassword}
-                            onChange={(e) => setRegPassword(e.target.value)}
-                        />
+                        <div className="relative">
+                            <input 
+                                required
+                                type={showRegPassword ? "text" : "password"}
+                                className="w-full px-4 py-3 pr-12 rounded-xl bg-slate-50 border-2 border-transparent focus:bg-white focus:border-purple-500 focus:outline-none transition-all font-bold text-slate-900"
+                                placeholder="••••"
+                                value={regPassword}
+                                onChange={(e) => setRegPassword(e.target.value)}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowRegPassword(!showRegPassword)}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                            >
+                                {showRegPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                            </button>
+                        </div>
                     </div>
                     
                     <Button 
@@ -327,6 +349,16 @@ const SelectEmployee: React.FC = () => {
              <div className="bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-2xl shadow-emerald-500/30 flex items-center gap-3 font-bold">
                  <div className="bg-white/20 p-1 rounded-full"><CheckCircle2 className="w-5 h-5" /></div>
                  {successMessage}
+             </div>
+         </div>
+      )}
+
+      {/* Error Toast */}
+      {error && (
+         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top-10 fade-in duration-300">
+             <div className="bg-red-500 text-white px-6 py-4 rounded-2xl shadow-2xl shadow-red-500/30 flex items-center gap-3 font-bold">
+                 <div className="bg-white/20 p-1 rounded-full"><AlertTriangle className="w-5 h-5" /></div>
+                 {error}
              </div>
          </div>
       )}
@@ -506,13 +538,20 @@ const SelectEmployee: React.FC = () => {
                                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                                   <input 
                                       ref={passwordRef}
-                                      type="password" 
+                                      type={showLoginPassword ? "text" : "password"}
                                       value={passwordInput}
                                       onChange={(e) => setPasswordInput(e.target.value)}
-                                      className={`w-full pl-12 pr-4 py-4 rounded-xl bg-slate-50 border-2 ${loginError ? 'border-red-300 bg-red-50 focus:border-red-500' : 'border-transparent focus:border-primary'} text-slate-900 font-bold placeholder-slate-400 focus:bg-white focus:ring-4 focus:ring-primary/10 transition-all outline-none text-lg tracking-widest`}
+                                      className={`w-full pl-12 pr-12 py-4 rounded-xl bg-slate-50 border-2 ${loginError ? 'border-red-300 bg-red-50 focus:border-red-500' : 'border-transparent focus:border-primary'} text-slate-900 font-bold placeholder-slate-400 focus:bg-white focus:ring-4 focus:ring-primary/10 transition-all outline-none text-lg tracking-widest`}
                                       placeholder="••••"
                                       maxLength={20}
                                   />
+                                  <button
+                                      type="button"
+                                      onClick={() => setShowLoginPassword(!showLoginPassword)}
+                                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                                  >
+                                      {showLoginPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                  </button>
                               </div>
                               {loginError && (
                                   <p className="text-red-500 text-xs font-bold ml-2 animate-in slide-in-from-left-2 flex items-center">
@@ -618,12 +657,19 @@ const SelectEmployee: React.FC = () => {
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-primary transition-colors" />
                   <input 
                     required
-                    type="password" 
-                    className="w-full pl-10 pr-3 py-3.5 rounded-xl bg-slate-50 border border-transparent text-slate-900 font-bold placeholder-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all outline-none text-sm"
+                    type={showRegPassword ? "text" : "password"} 
+                    className="w-full pl-10 pr-10 py-3.5 rounded-xl bg-slate-50 border border-transparent text-slate-900 font-bold placeholder-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all outline-none text-sm"
                     placeholder="Pin"
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegPassword(!showRegPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                  >
+                    {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
               

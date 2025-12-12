@@ -2,13 +2,11 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { getAttendanceByDate, punchIn, punchOut, getWeeklyAttendance, getCompanySettings, updateCompanySettings, updateWorkLog, getAnnouncements, getTodayTeamAttendance, getEmployees, subscribeToNotifications, markNotificationAsRead, clearNotifications } from '../services/firestore';
+import { getAttendanceByDate, punchIn, punchOut, getWeeklyAttendance, getCompanySettings, updateWorkLog, getAnnouncements, getTodayTeamAttendance, getEmployees, subscribeToNotifications, markNotificationAsRead, clearNotifications } from '../services/firestore';
 import { AttendanceRecord, CompanySettings, LocationData, Announcement, Employee, Notification } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Play, Square, Clock, Calendar, Activity, History, MapPin, AlertTriangle, RefreshCw, ShieldAlert, Globe, ExternalLink, ChevronDown, FileText, Bell, Megaphone, Users, Trash2, BarChart2, Smile, Frown, Meh, Zap, Brain } from 'lucide-react';
-
-const MAPPLS_KEY = 'viucbkxttvlqxvilccraufoblaokkqyckznr';
+import { Play, Square, Clock, Calendar, Activity, History, MapPin, AlertTriangle, RefreshCw, ShieldAlert, Globe, ExternalLink, ChevronDown, FileText, Bell, Megaphone, Users, Trash2, BarChart2, Smile, Frown, Meh, Zap, Brain, Navigation } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { currentUser } = useStore();
@@ -17,7 +15,15 @@ const Dashboard: React.FC = () => {
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [weeklyStats, setWeeklyStats] = useState<{day: string, hours: number, date: string, isToday: boolean}[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [onlineColleagues, setOnlineColleagues] = useState<{name: string, punchIn: string, id: string, status?: string, statusEmoji?: string, mood?: string}[]>([]);
+  const [onlineColleagues, setOnlineColleagues] = useState<{
+      name: string, 
+      punchIn: string, 
+      id: string, 
+      status?: string, 
+      statusEmoji?: string, 
+      mood?: string,
+      location?: LocationData 
+  }[]>([]);
   const [loading, setLoading] = useState(true);
   const [punching, setPunching] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -39,6 +45,7 @@ const Dashboard: React.FC = () => {
   const [locationStatus, setLocationStatus] = useState<'loading' | 'success' | 'error' | 'out-of-range' | 'denied'>('loading');
   const [distance, setDistance] = useState<number>(0);
   const [checkingLocation, setCheckingLocation] = useState(false);
+  const [userCoords, setUserCoords] = useState<{lat: number, lng: number, accuracy: number} | null>(null);
 
   // Work Log State
   const [workLog, setWorkLog] = useState('');
@@ -109,10 +116,10 @@ const Dashboard: React.FC = () => {
       setAnnouncements(announce);
       
       // Calculate Online Colleagues with Status
-      const activeMap = new Map<string, {time: string, mood?: string}>(); 
+      const activeMap = new Map<string, {time: string, mood?: string, location?: LocationData}>(); 
       todaysTeamAttendance.forEach(r => {
           if (r.punchIn && !r.punchOut) {
-              activeMap.set(r.employeeId, { time: r.punchIn, mood: r.mood });
+              activeMap.set(r.employeeId, { time: r.punchIn, mood: r.mood, location: r.punchInLocation });
           }
       });
       
@@ -125,7 +132,8 @@ const Dashboard: React.FC = () => {
               punchIn: data.time,
               status: emp?.currentStatus,
               statusEmoji: emp?.currentStatusEmoji,
-              mood: data.mood
+              mood: data.mood,
+              location: data.location
           };
       }).filter(u => u.id !== currentUser.id); // Exclude self
 
@@ -168,11 +176,17 @@ const Dashboard: React.FC = () => {
   // --- GEOLOCATION LOGIC ---
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    // Explicit number conversion to prevent string concatenation bugs
+    const nLat1 = Number(lat1);
+    const nLon1 = Number(lon1);
+    const nLat2 = Number(lat2);
+    const nLon2 = Number(lon2);
+
     const R = 6371e3; // Earth radius in meters
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+    const φ1 = (nLat1 * Math.PI) / 180;
+    const φ2 = (nLat2 * Math.PI) / 180;
+    const Δφ = ((nLat2 - nLat1) * Math.PI) / 180;
+    const Δλ = ((nLon2 - nLon1) * Math.PI) / 180;
 
     const a =
       Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
@@ -201,6 +215,10 @@ const Dashboard: React.FC = () => {
       (position) => {
         const userLat = position.coords.latitude;
         const userLng = position.coords.longitude;
+        const accuracy = position.coords.accuracy;
+        
+        setUserCoords({ lat: userLat, lng: userLng, accuracy });
+
         const dist = calculateDistance(userLat, userLng, companySettings.latitude, companySettings.longitude);
         
         setDistance(Math.round(dist));
@@ -215,7 +233,6 @@ const Dashboard: React.FC = () => {
       },
       (error) => {
         console.error(`Geolocation error (${error.code}): ${error.message}`);
-        // Only update error status if it's not a background check, or if we want to show persistent errors
         if (!isBackground) {
             if (error.code === 1) {
                 setLocationStatus('denied');
@@ -225,58 +242,51 @@ const Dashboard: React.FC = () => {
         }
         setCheckingLocation(false);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
   };
 
-  // Enhanced "Retry" that acts as "Mark Territory" for all users
-  const handleRetryAndUpdateLocation = () => {
+  // Safe Refresh for users to re-check their position without updating DB
+  const handleRefreshLocation = async () => {
       if (!navigator.geolocation) {
           alert("Geolocation is not supported by your browser");
-          return;
-      }
-      
-      if (!companySettings) {
-          checkLocation(false);
           return;
       }
       
       setCheckingLocation(true);
       setLocationStatus('loading');
 
-      navigator.geolocation.getCurrentPosition(async (position) => {
-          const { latitude, longitude } = position.coords;
+      // 1. Fetch fresh settings to ensure we are comparing against correct office location
+      let currentSettings = companySettings;
+      try {
+          const freshSettings = await getCompanySettings();
+          setCompanySettings(freshSettings);
+          currentSettings = freshSettings;
+      } catch (e) {
+          console.error("Failed to refresh company settings", e);
+      }
+
+      navigator.geolocation.getCurrentPosition((position) => {
+          const { latitude, longitude, accuracy } = position.coords;
           
-          try {
-              // Construct the updated settings object
-              const updatedData = {
-                  latitude,
-                  longitude,
-                  radius: companySettings.radius, // Keep existing radius
-                  locationName: companySettings.locationName, // Keep existing name
-                  teamName: companySettings.teamName, // Keep existing team name
-                  teamLogoUrl: companySettings.teamLogoUrl // Keep existing logo
-              };
-              
-              // Update in Firestore
-              await updateCompanySettings(updatedData);
-              
-              // Update local state immediately
-              setCompanySettings(prev => prev ? { ...prev, latitude, longitude } : null);
-              setDistance(0); // We are at the center
-              setLocationStatus('success');
-          } catch (err) {
-              console.error("Failed to auto-update location", err);
-              // Fallback to standard check if write fails
-              checkLocation(false);
-          } finally {
-              setCheckingLocation(false);
+          setUserCoords({ lat: latitude, lng: longitude, accuracy });
+          
+          if (currentSettings) {
+             const dist = calculateDistance(latitude, longitude, currentSettings.latitude, currentSettings.longitude);
+             setDistance(Math.round(dist));
+             
+             if (dist <= currentSettings.radius) {
+                 setLocationStatus('success');
+             } else {
+                 setLocationStatus('out-of-range');
+             }
           }
+          setCheckingLocation(false);
       }, (error) => {
           console.error(`Geo error: ${error.message}`);
           setLocationStatus(error.code === 1 ? 'denied' : 'error');
           setCheckingLocation(false);
-      }, { enableHighAccuracy: true });
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
   };
 
   // Check location whenever settings load, and then periodically
@@ -304,30 +314,31 @@ const Dashboard: React.FC = () => {
          resolve(undefined);
          return;
       }
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-           const { latitude, longitude } = position.coords;
-           let inOffice = false;
-           
-           // CRITICAL: Determine inOffice status based on current settings at moment of punch
-           if (companySettings) {
-               const dist = calculateDistance(latitude, longitude, companySettings.latitude, companySettings.longitude);
-               inOffice = dist <= companySettings.radius;
-               console.log(`Punch Location Check: Dist=${dist}m, Radius=${companySettings.radius}m, InOffice=${inOffice}`);
-           }
-           
-           resolve({
-             lat: latitude,
-             lng: longitude,
-             inOffice: inOffice
-           });
-        },
-        (error) => {
-           console.error(`Geo error during punch (${error.code}): ${error.message}`);
-           resolve(undefined);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
+      // Use latest settings check
+      getCompanySettings().then(settings => {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+               const { latitude, longitude } = position.coords;
+               let inOffice = false;
+               
+               if (settings) {
+                   const dist = calculateDistance(latitude, longitude, settings.latitude, settings.longitude);
+                   inOffice = dist <= settings.radius;
+               }
+               
+               resolve({
+                 lat: latitude,
+                 lng: longitude,
+                 inOffice: inOffice
+               });
+            },
+            (error) => {
+               console.error(`Geo error during punch (${error.code}): ${error.message}`);
+               resolve(undefined);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          );
+      });
     });
   };
 
@@ -449,7 +460,7 @@ const Dashboard: React.FC = () => {
   const renderLocationBadge = (loc?: LocationData) => {
       if (!loc) return <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded ml-1">No Loc</span>;
       
-      const mapsUrl = `https://mappls.com/@${loc.lat},${loc.lng},18z`;
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`;
       
       // Calculate distance if not in office and settings are available
       let distanceText = "";
@@ -461,12 +472,12 @@ const Dashboard: React.FC = () => {
       // STRICT CHECK: Use saved boolean first
       return loc.inOffice 
         ? (
-          <a href={mapsUrl} target="_blank" rel="noreferrer" className="group/link text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full ml-1 flex items-center inline-flex hover:bg-primary/20 transition-colors" title="View on Mappls">
+          <a href={mapsUrl} target="_blank" rel="noreferrer" className="group/link text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full ml-1 flex items-center inline-flex hover:bg-primary/20 transition-colors" title="View on Maps">
             <MapPin className="w-2.5 h-2.5 mr-1" /> Office 
           </a>
         )
         : (
-          <a href={mapsUrl} target="_blank" rel="noreferrer" className="group/link text-[10px] bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full ml-1 flex items-center inline-flex hover:bg-amber-200 transition-colors" title={`View on Mappls - ${distanceText} away`}>
+          <a href={mapsUrl} target="_blank" rel="noreferrer" className="group/link text-[10px] bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full ml-1 flex items-center inline-flex hover:bg-amber-200 transition-colors" title={`View on Maps - ${distanceText} away`}>
             <Globe className="w-2.5 h-2.5 mr-1" /> Remote {distanceText}
           </a>
         );
@@ -605,34 +616,60 @@ const Dashboard: React.FC = () => {
                     </p>
                     
                     {/* Location Status Badge */}
-                    <div className="flex items-center justify-center md:justify-start gap-2 mt-2">
+                    <div className="flex flex-col items-center md:items-start gap-2 mt-2">
                          {locationStatus === 'loading' && (
                              <span className="flex items-center text-xs bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-white border border-white/10">
                                  <RefreshCw className="w-3 h-3 mr-2 animate-spin" /> Locating...
                              </span>
                          )}
                          {locationStatus === 'success' && (
-                             <span className="flex items-center text-xs bg-emerald-400/30 backdrop-blur-md px-3 py-1 rounded-full text-white border border-emerald-300/30 font-bold">
-                                 <MapPin className="w-3 h-3 mr-2" /> {officeName} ({distance}m)
+                             <span className="flex items-center text-xs bg-emerald-400/30 backdrop-blur-md px-3 py-1 rounded-full text-white border border-emerald-300/30 font-bold shadow-sm">
+                                 <MapPin className="w-3 h-3 mr-2" /> In Office: {officeName} ({distance}m)
                              </span>
                          )}
                          {locationStatus === 'out-of-range' && (
                              <div className="flex flex-col items-start gap-1">
-                                 <span className="flex items-center text-xs bg-amber-500/30 backdrop-blur-md px-3 py-1 rounded-full text-amber-50 border border-amber-300/30 font-bold">
-                                     <Globe className="w-3 h-3 mr-2" /> Remote ({distance}m away)
+                                 <span className="flex items-center text-xs bg-amber-500/30 backdrop-blur-md px-3 py-1 rounded-full text-amber-50 border border-amber-300/30 font-bold shadow-sm">
+                                     <Globe className="w-3 h-3 mr-2" /> Remote ({distance > 1000 ? (distance/1000).toFixed(1) + 'km' : distance + 'm'})
                                  </span>
                              </div>
                          )}
                          {(locationStatus === 'denied' || locationStatus === 'error') && (
                              <div className="flex flex-col items-start gap-1">
-                                 <span className="flex items-center text-xs bg-slate-800/30 backdrop-blur-md px-3 py-1 rounded-full text-slate-100 border border-slate-400/30 font-bold">
+                                 <span className="flex items-center text-xs bg-slate-800/30 backdrop-blur-md px-3 py-1 rounded-full text-slate-100 border border-slate-400/30 font-bold shadow-sm">
                                      <AlertTriangle className="w-3 h-3 mr-2" /> GPS Error
                                  </span>
                              </div>
                          )}
-                         <button onClick={handleRetryAndUpdateLocation} className="text-[10px] text-white/70 hover:text-white underline decoration-dotted ml-1" title="Mark Territory / Retry">
-                            Retry
-                         </button>
+                         
+                         {/* Location Details Block */}
+                         {(locationStatus === 'success' || locationStatus === 'out-of-range') && userCoords && (
+                             <div className="mt-2 text-[10px] text-primary-foreground/80 bg-black/10 p-2 rounded-lg backdrop-blur-sm border border-white/10 font-mono w-full md:w-auto">
+                                 <div className="flex items-center justify-between gap-3">
+                                     <span>Lat: {userCoords.lat.toFixed(5)}</span>
+                                     <span>Lng: {userCoords.lng.toFixed(5)}</span>
+                                 </div>
+                                 <div className="flex items-center gap-2 mt-1 text-primary-foreground/60">
+                                     <span className="flex items-center"><Navigation className="w-2 h-2 mr-1"/> ±{Math.round(userCoords.accuracy)}m acc</span>
+                                 </div>
+                             </div>
+                         )}
+                         
+                         <div className="flex items-center gap-3">
+                             <button 
+                                onClick={handleRefreshLocation} 
+                                disabled={checkingLocation}
+                                className="text-[10px] text-white/70 hover:text-white underline decoration-dotted ml-1 flex items-center gap-1 transition-colors" 
+                                title="Force refresh your GPS position"
+                             >
+                                {checkingLocation ? <RefreshCw className="w-3 h-3 animate-spin" /> : 'Retry GPS'}
+                             </button>
+                             {locationStatus === 'success' && (
+                                 <span className="text-[10px] text-emerald-100 opacity-80">
+                                     Matched radius: {companySettings?.radius}m
+                                 </span>
+                             )}
+                         </div>
                     </div>
                 </div>
              </div>
@@ -664,7 +701,7 @@ const Dashboard: React.FC = () => {
                 {!attendance ? (
                   <button 
                     onClick={handlePunchIn}
-                    disabled={punching || !isToday}
+                    disabled={punching || !isToday || locationStatus === 'loading'}
                     className={`group relative flex items-center justify-center w-40 h-40 rounded-full backdrop-blur-md border-4 transition-all duration-300 shadow-[0_0_40px_-10px_rgba(255,255,255,0.3)] cursor-pointer hover:scale-105 disabled:opacity-70 disabled:cursor-not-allowed ${punchButtonColor}`}
                   >
                     <div className="flex flex-col items-center text-white">
@@ -764,7 +801,19 @@ const Dashboard: React.FC = () => {
                                         </div>
                                         <div className="flex justify-between items-center mt-0.5">
                                             <p className="text-[10px] text-slate-400">In at {new Date(colleague.punchIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
-                                            {colleague.status && <p className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 truncate max-w-[80px]">{colleague.status}</p>}
+                                            
+                                            {/* Location Icon for Teammates */}
+                                            <div className="flex items-center gap-1">
+                                                 {colleague.location && (
+                                                     <span 
+                                                       title={colleague.location.inOffice ? "In Office" : "Remote"} 
+                                                       className={`flex items-center justify-center w-4 h-4 rounded-full border ${colleague.location.inOffice ? 'bg-emerald-100 text-emerald-600 border-emerald-200' : 'bg-amber-100 text-amber-600 border-amber-200'}`}
+                                                     >
+                                                         {colleague.location.inOffice ? <MapPin size={8}/> : <Globe size={8}/>}
+                                                     </span>
+                                                 )}
+                                                 {colleague.status && <p className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 truncate max-w-[80px]">{colleague.status}</p>}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

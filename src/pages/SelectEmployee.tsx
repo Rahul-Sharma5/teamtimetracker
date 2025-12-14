@@ -126,9 +126,9 @@ const SelectEmployee: React.FC = () => {
       } catch (err: any) {
         console.error("Error fetching employees:", err);
         if (err?.code === 'permission-denied') {
-          setError('permission-denied');
+          setError('Database Access Denied. Please set your Firestore Security Rules to "allow read, write: if true;" for public development access.');
         } else {
-          setError(err.message || "An unexpected error occurred.");
+          setError(err.message || "An unexpected error occurred. Check console.");
         }
       } finally {
         setLoading(false);
@@ -219,9 +219,13 @@ const SelectEmployee: React.FC = () => {
         // Auto-hide success message after 5s
         setTimeout(() => setSuccessMessage(null), 5000);
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Failed to create account", error);
-        setError("Failed to create account. Please check your connection.");
+        if (error?.code === 'permission-denied') {
+            setError('Permission Denied: Ensure Firestore Rules allow writes.');
+        } else {
+            setError("Failed to create account. Please check your connection.");
+        }
     } finally {
         setIsRegistering(false);
     }
@@ -251,7 +255,7 @@ const SelectEmployee: React.FC = () => {
   }
 
   // --- EMPTY STATE / FIRST RUN SETUP ---
-  if (employees.length === 0) {
+  if (employees.length === 0 && !error) {
       return (
         <div className="min-h-screen w-full bg-slate-50 flex flex-col items-center justify-center relative overflow-hidden p-4">
             <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] opacity-70"></div>
@@ -355,10 +359,10 @@ const SelectEmployee: React.FC = () => {
 
       {/* Error Toast */}
       {error && (
-         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top-10 fade-in duration-300">
-             <div className="bg-red-500 text-white px-6 py-4 rounded-2xl shadow-2xl shadow-red-500/30 flex items-center gap-3 font-bold">
-                 <div className="bg-white/20 p-1 rounded-full"><AlertTriangle className="w-5 h-5" /></div>
-                 {error}
+         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top-10 fade-in duration-300 w-[90%] max-w-lg">
+             <div className="bg-red-500 text-white px-6 py-4 rounded-2xl shadow-2xl shadow-red-500/30 flex items-start gap-3 font-bold">
+                 <div className="bg-white/20 p-1 rounded-full flex-shrink-0"><AlertTriangle className="w-5 h-5" /></div>
+                 <div className="text-sm leading-tight">{error}</div>
              </div>
          </div>
       )}
@@ -439,7 +443,7 @@ const SelectEmployee: React.FC = () => {
         {/* 3. Employee Cards Sections */}
         {filteredEmployees.length === 0 ? (
            <div className="text-center py-10 animate-fade-in">
-             <p className="text-slate-400 font-medium">No employees found matching "{searchTerm}"</p>
+             {error ? null : <p className="text-slate-400 font-medium">No employees found matching "{searchTerm}"</p>}
            </div>
         ) : (
           <div className="w-full flex flex-col gap-12 pb-12">

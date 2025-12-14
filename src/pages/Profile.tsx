@@ -131,8 +131,8 @@ const Profile: React.FC = () => {
          <p className="text-slate-500 mt-1">Manage your account settings, personal details, and credentials.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column: Identity Card */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          {/* Left Column: Identity & Status */}
           <div className="lg:col-span-1 space-y-6">
               <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-xl shadow-slate-200/50 flex flex-col items-center text-center relative overflow-hidden group">
                   <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-primary to-primary/80 z-0"></div>
@@ -234,117 +234,9 @@ const Profile: React.FC = () => {
                       </div>
                   </CardContent>
               </Card>
-
-              {/* Theme Selector - NEW */}
-              <Card className="border-none shadow-md bg-white/80 backdrop-blur-sm overflow-hidden">
-                  <div className="h-1.5 w-full bg-slate-200"></div>
-                  <CardHeader>
-                      <CardTitle className="text-slate-800 flex items-center gap-2 text-base">
-                          <Palette className="w-4 h-4 text-primary" /> App Theme
-                      </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                      <div className="grid grid-cols-6 gap-2">
-                        {themeOptions.map((theme) => (
-                          <button
-                            key={theme.id}
-                            onClick={() => setThemeColor(theme.id)}
-                            className={`w-full aspect-square rounded-full flex items-center justify-center transition-all ${theme.color} ${
-                                themeColor === theme.id ? 'ring-2 ring-offset-2 ring-slate-400 scale-110 shadow-md' : 'hover:scale-105 opacity-80 hover:opacity-100'
-                            }`}
-                            title={theme.label}
-                          >
-                            {themeColor === theme.id && <Check className="w-4 h-4 text-white" />}
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-center text-[10px] text-slate-400 mt-4">Select a color to customize the look and feel.</p>
-                  </CardContent>
-              </Card>
-
-              {/* Security Card */}
-              <Card className="border-none shadow-md bg-white/80 backdrop-blur-sm overflow-hidden">
-                  <div className="h-1.5 w-full bg-slate-200"></div>
-                  <CardHeader>
-                      <CardTitle className="text-slate-800 flex items-center gap-2 text-base">
-                          <Lock className="w-4 h-4 text-primary" /> Security Settings
-                      </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                      {/* Show Current Password Section */}
-                      <div className="space-y-1 mb-6 pb-6 border-b border-slate-100">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Your Current Passcode</label>
-                          <div className="flex items-center gap-3">
-                              <div className="font-mono text-lg font-bold text-slate-800 tracking-widest bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 min-w-[100px] text-center">
-                                  {showCurrentPass ? currentUser.password : '••••'}
-                              </div>
-                              <button 
-                                  type="button" 
-                                  onClick={() => setShowCurrentPass(!showCurrentPass)} 
-                                  className="text-slate-400 hover:text-primary transition-colors p-2 hover:bg-slate-50 rounded-full"
-                                  title={showCurrentPass ? "Hide Passcode" : "Show Passcode"}
-                              >
-                                  {showCurrentPass ? <EyeOff className="w-5 h-5"/> : <Eye className="w-5 h-5"/>}
-                              </button>
-                          </div>
-                      </div>
-
-                      <form onSubmit={handleUpdatePassword} className="space-y-4">
-                          <div className="space-y-1">
-                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">New Passcode</label>
-                              <div className="relative">
-                                <input 
-                                    type={showNewPass ? "text" : "password"}
-                                    className="w-full p-3 pr-10 rounded-xl bg-slate-50 focus:bg-white border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm text-slate-900"
-                                    placeholder="Enter new pin..."
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowNewPass(!showNewPass)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
-                                >
-                                    {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                </button>
-                              </div>
-                          </div>
-                          <div className="space-y-1">
-                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Confirm New Passcode</label>
-                              <div className="relative">
-                                <input 
-                                    type={showConfirmPass ? "text" : "password"}
-                                    className="w-full p-3 pr-10 rounded-xl bg-slate-50 focus:bg-white border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm text-slate-900"
-                                    placeholder="Confirm new pin..."
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowConfirmPass(!showConfirmPass)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
-                                >
-                                    {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                </button>
-                              </div>
-                          </div>
-                          
-                          {errorPass && <p className="text-red-500 text-xs font-bold">{errorPass}</p>}
-                          {successPass && (
-                              <div className="p-3 bg-green-50 text-green-700 rounded-xl flex items-center gap-2 text-xs font-bold">
-                                  <CheckCircle2 className="w-4 h-4" /> Updated successfully!
-                              </div>
-                          )}
-
-                          <Button type="submit" disabled={loadingPass || !password} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-xl text-sm">
-                              {loadingPass ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Passcode'}
-                          </Button>
-                      </form>
-                  </CardContent>
-              </Card>
           </div>
 
-          {/* Right Column: Details & Edit Form */}
+          {/* Right Column: Details, Theme & Security */}
           <div className="lg:col-span-2 space-y-6">
               <Card className="border-none shadow-md bg-white/90 backdrop-blur-sm min-h-[500px] flex flex-col">
                   <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-slate-100 mb-4">
@@ -458,6 +350,117 @@ const Profile: React.FC = () => {
                       )}
                   </CardContent>
               </Card>
+
+              {/* Bottom Row: Theme & Security */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Theme Selector */}
+                  <Card className="border-none shadow-md bg-white/80 backdrop-blur-sm overflow-hidden h-full">
+                      <div className="h-1.5 w-full bg-slate-200"></div>
+                      <CardHeader>
+                          <CardTitle className="text-slate-800 flex items-center gap-2 text-base">
+                              <Palette className="w-4 h-4 text-primary" /> App Theme
+                          </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                          <div className="grid grid-cols-6 gap-2">
+                            {themeOptions.map((theme) => (
+                              <button
+                                key={theme.id}
+                                onClick={() => setThemeColor(theme.id)}
+                                className={`w-full aspect-square rounded-full flex items-center justify-center transition-all ${theme.color} ${
+                                    themeColor === theme.id ? 'ring-2 ring-offset-2 ring-slate-400 scale-110 shadow-md' : 'hover:scale-105 opacity-80 hover:opacity-100'
+                                }`}
+                                title={theme.label}
+                              >
+                                {themeColor === theme.id && <Check className="w-4 h-4 text-white" />}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-center text-[10px] text-slate-400 mt-4">Select a color to customize the look and feel.</p>
+                      </CardContent>
+                  </Card>
+
+                  {/* Security Card */}
+                  <Card className="border-none shadow-md bg-white/80 backdrop-blur-sm overflow-hidden h-full">
+                      <div className="h-1.5 w-full bg-slate-200"></div>
+                      <CardHeader>
+                          <CardTitle className="text-slate-800 flex items-center gap-2 text-base">
+                              <Lock className="w-4 h-4 text-primary" /> Security Settings
+                          </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                          {/* Show Current Password Section */}
+                          <div className="space-y-1 mb-6 pb-6 border-b border-slate-100">
+                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Your Current Passcode</label>
+                              <div className="flex items-center gap-3">
+                                  <div className="font-mono text-lg font-bold text-slate-800 tracking-widest bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 min-w-[100px] text-center">
+                                      {showCurrentPass ? currentUser.password : '••••'}
+                                  </div>
+                                  <button 
+                                      type="button" 
+                                      onClick={() => setShowCurrentPass(!showCurrentPass)} 
+                                      className="text-slate-400 hover:text-primary transition-colors p-2 hover:bg-slate-50 rounded-full"
+                                      title={showCurrentPass ? "Hide Passcode" : "Show Passcode"}
+                                  >
+                                      {showCurrentPass ? <EyeOff className="w-5 h-5"/> : <Eye className="w-5 h-5"/>}
+                                  </button>
+                              </div>
+                          </div>
+
+                          <form onSubmit={handleUpdatePassword} className="space-y-4">
+                              <div className="space-y-1">
+                                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">New Passcode</label>
+                                  <div className="relative">
+                                    <input 
+                                        type={showNewPass ? "text" : "password"}
+                                        className="w-full p-3 pr-10 rounded-xl bg-slate-50 focus:bg-white border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm text-slate-900"
+                                        placeholder="Enter new pin..."
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowNewPass(!showNewPass)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                                    >
+                                        {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                  </div>
+                              </div>
+                              <div className="space-y-1">
+                                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Confirm New Passcode</label>
+                                  <div className="relative">
+                                    <input 
+                                        type={showConfirmPass ? "text" : "password"}
+                                        className="w-full p-3 pr-10 rounded-xl bg-slate-50 focus:bg-white border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm text-slate-900"
+                                        placeholder="Confirm new pin..."
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConfirmPass(!showConfirmPass)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                                    >
+                                        {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                  </div>
+                              </div>
+                              
+                              {errorPass && <p className="text-red-500 text-xs font-bold">{errorPass}</p>}
+                              {successPass && (
+                                  <div className="p-3 bg-green-50 text-green-700 rounded-xl flex items-center gap-2 text-xs font-bold">
+                                      <CheckCircle2 className="w-4 h-4" /> Updated successfully!
+                                  </div>
+                              )}
+
+                              <Button type="submit" disabled={loadingPass || !password} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-xl text-sm">
+                                  {loadingPass ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Passcode'}
+                              </Button>
+                          </form>
+                      </CardContent>
+                  </Card>
+              </div>
           </div>
       </div>
     </div>

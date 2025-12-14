@@ -7,7 +7,60 @@ import { Users, Coffee, CalendarOff, Clock, Filter, ChevronRight, Calendar, MapP
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 
-// Define interface for props
+// --- Extracted Components ---
+
+const LocationIcon = ({ loc, companySettings }: { loc?: LocationData, companySettings: CompanySettings | null }) => {
+  if (!loc) return <span title="No location data" className="text-slate-300 text-[10px]">-</span>;
+  
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371e3; 
+    const φ1 = (Number(lat1) * Math.PI) / 180;
+    const φ2 = (Number(lat2) * Math.PI) / 180;
+    const Δφ = ((Number(lat2) - Number(lat1)) * Math.PI) / 180;
+    const Δλ = ((Number(lon2) - Number(lon1)) * Math.PI) / 180;
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; 
+  };
+
+  const url = `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`;
+  let distanceText = "";
+  if (!loc.inOffice && companySettings) {
+      const dist = calculateDistance(loc.lat, loc.lng, companySettings.latitude, companySettings.longitude);
+      distanceText = dist > 1000 ? `(${(dist/1000).toFixed(1)}km)` : `(${Math.round(dist)}m)`;
+  }
+
+  if (loc.inOffice) {
+      return (
+         <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center text-emerald-600 hover:text-emerald-800 hover:underline bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-100 transition-colors max-w-full truncate">
+             <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />
+             <span className="text-[10px] font-bold uppercase tracking-wide truncate">Office</span>
+         </a>
+      )
+  }
+  
+  return (
+      <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center text-amber-600 hover:text-amber-800 hover:underline bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-md border border-amber-100 transition-colors max-w-full truncate">
+         <Globe className="w-3 h-3 mr-1 flex-shrink-0" />
+         <span className="text-[10px] font-bold uppercase tracking-wide truncate">Remote {distanceText}</span>
+      </a>
+  );
+};
+
+const TabButton = ({ id, label, icon: Icon, activeTab, setActiveTab }: { id: string, label: string, icon: any, activeTab: string, setActiveTab: (id: any) => void }) => (
+    <button
+      onClick={() => setActiveTab(id)}
+      className={`flex-shrink-0 flex items-center px-4 py-2.5 md:px-5 md:py-3 text-sm font-bold rounded-xl transition-all duration-200 border whitespace-nowrap snap-center ${
+        activeTab === id 
+          ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 border-primary' 
+          : 'bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 border-slate-200'
+      }`}
+    >
+      <Icon className={`w-4 h-4 mr-2 ${activeTab === id ? 'text-white' : ''}`} />
+      {label}
+    </button>
+);
+
 interface LeaveCardItemProps {
   rec: LeaveRecord;
   showActions: boolean;
@@ -99,7 +152,8 @@ const LeaveCardItem: React.FC<LeaveCardItemProps> = ({
                        <input 
                           type="text" 
                           placeholder="Add note (optional for approval, required for rejection)..." 
-                          className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                          style={{ colorScheme: 'light' }}
+                          className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all shadow-sm"
                           value={note}
                           onChange={(e) => setNote(e.target.value)}
                           disabled={isAnyProcessing}
@@ -110,7 +164,8 @@ const LeaveCardItem: React.FC<LeaveCardItemProps> = ({
                               onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  onAction(rec.id, 'approved', note);
+                                  // Defer state update to next tick to avoid React #520 error due to unmounting during event
+                                  setTimeout(() => onAction(rec.id, 'approved', note), 0);
                               }}
                               disabled={isAnyProcessing}
                               className="bg-primary hover:bg-primary/90 text-white border-none rounded-lg font-bold relative z-10 transition-transform active:scale-95"
@@ -127,7 +182,8 @@ const LeaveCardItem: React.FC<LeaveCardItemProps> = ({
                                       alert("Please provide a reason for rejection.");
                                       return;
                                   }
-                                  onAction(rec.id, 'rejected', note);
+                                  // Defer state update to next tick
+                                  setTimeout(() => onAction(rec.id, 'rejected', note), 0);
                               }}
                               disabled={isAnyProcessing}
                               className="bg-white text-red-600 border border-red-200 hover:bg-red-50 rounded-lg font-bold relative z-10 transition-transform active:scale-95"
@@ -311,8 +367,6 @@ const TeamDashboard: React.FC = () => {
       }
   }
 
-  // ... (rest of methods)
-
   const handleLeaveAction = async (id: string, status: 'approved' | 'rejected', note?: string) => {
       if (!currentUser) return;
       
@@ -412,67 +466,19 @@ const TeamDashboard: React.FC = () => {
     window.URL.revokeObjectURL(url);
   };
 
-
-  const TabButton = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
-    <button
-      onClick={() => setActiveTab(id)}
-      className={`flex-shrink-0 flex items-center px-4 py-2.5 md:px-5 md:py-3 text-sm font-bold rounded-xl transition-all duration-200 border whitespace-nowrap snap-center ${
-        activeTab === id 
-          ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 border-primary' 
-          : 'bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 border-slate-200'
-      }`}
-    >
-      <Icon className={`w-4 h-4 mr-2 ${activeTab === id ? 'text-white' : ''}`} />
-      {label}
-    </button>
-  );
-
-  const showPicker = () => {
+  const handleDateClick = (e: React.MouseEvent) => {
+    // If the user clicked the actual input, let native behavior handle it
+    if ((e.target as HTMLElement).tagName === 'INPUT') return;
+    
+    // Otherwise (clicked icon or padding), trigger picker manually
     try {
-      dateInputRef.current?.showPicker();
-    } catch (e) {}
-  };
-
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371e3; 
-    const φ1 = (Number(lat1) * Math.PI) / 180;
-    const φ2 = (Number(lat2) * Math.PI) / 180;
-    const Δφ = ((Number(lat2) - Number(lat1)) * Math.PI) / 180;
-    const Δλ = ((Number(lon2) - Number(lon1)) * Math.PI) / 180;
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; 
-  };
-
-  const LocationIcon = ({ loc }: { loc?: LocationData }) => {
-      if (!loc) return <span title="No location data" className="text-slate-300 text-[10px]">-</span>;
-      
-      const url = `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`;
-      let distanceText = "";
-      if (!loc.inOffice && companySettings) {
-          const dist = calculateDistance(loc.lat, loc.lng, companySettings.latitude, companySettings.longitude);
-          distanceText = dist > 1000 ? `(${(dist/1000).toFixed(1)}km)` : `(${Math.round(dist)}m)`;
-      }
-
-      if (loc.inOffice) {
-          return (
-             <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center text-emerald-600 hover:text-emerald-800 hover:underline bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-100 transition-colors max-w-full truncate">
-                 <MapPin className="w-3 h-3 mr-1 flex-shrink-0" />
-                 <span className="text-[10px] font-bold uppercase tracking-wide truncate">Office</span>
-             </a>
-          )
-      }
-      
-      return (
-          <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center text-amber-600 hover:text-amber-800 hover:underline bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-md border border-amber-100 transition-colors max-w-full truncate">
-             <Globe className="w-3 h-3 mr-1 flex-shrink-0" />
-             <span className="text-[10px] font-bold uppercase tracking-wide truncate">Remote {distanceText}</span>
-          </a>
-      );
+        dateInputRef.current?.showPicker();
+    } catch (err) {
+        // Fallback or ignore if not supported
+    }
   };
 
   const renderAttendanceCards = () => {
-    // ... same logic
     const records = getFilteredAttendance();
     const isToday = filterDate === new Date().toISOString().split('T')[0];
 
@@ -543,7 +549,7 @@ const TeamDashboard: React.FC = () => {
                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div> 
                                         Punch In
                                     </span>
-                                    {rec.punchInLocation ? <LocationIcon loc={rec.punchInLocation} /> : <span className="text-slate-300">-</span>}
+                                    {rec.punchInLocation ? <LocationIcon loc={rec.punchInLocation} companySettings={companySettings} /> : <span className="text-slate-300">-</span>}
                                 </div>
                                 {rec.punchOut && (
                                     <div className="flex items-center justify-between text-xs">
@@ -551,7 +557,7 @@ const TeamDashboard: React.FC = () => {
                                             <div className="w-1.5 h-1.5 rounded-full bg-red-400"></div> 
                                             Punch Out
                                         </span>
-                                        {rec.punchOutLocation ? <LocationIcon loc={rec.punchOutLocation} /> : <span className="text-slate-300">-</span>}
+                                        {rec.punchOutLocation ? <LocationIcon loc={rec.punchOutLocation} companySettings={companySettings} /> : <span className="text-slate-300">-</span>}
                                     </div>
                                 )}
                             </div>
@@ -580,7 +586,6 @@ const TeamDashboard: React.FC = () => {
   };
 
   const renderBreaksCards = () => {
-    // ... same logic
     const records = getFilteredBreaks();
     if (records.length === 0) {
         return (
@@ -650,7 +655,6 @@ const TeamDashboard: React.FC = () => {
       if (!companySettings) return null;
       const isManagerOrLead = currentUser?.role === 'Manager' || currentUser?.role === 'Team Lead' || currentUser?.role === 'Admin';
 
-      // Ensure updated date is valid
       let lastUpdatedDate = 'N/A';
       try {
           if (companySettings.updatedAt) {
@@ -661,7 +665,6 @@ const TeamDashboard: React.FC = () => {
       return (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               
-              {/* Card 1: Current Office Zone (Read-Only) */}
               <Card className="border-slate-200 bg-white shadow-md flex flex-col h-full">
                   <CardHeader className="border-b border-slate-100 pb-4">
                       <CardTitle className="flex items-center gap-2 text-slate-800">
@@ -670,7 +673,6 @@ const TeamDashboard: React.FC = () => {
                       </CardTitle>
                   </CardHeader>
                   <CardContent className="p-6 flex-1 flex flex-col gap-4">
-                      {/* Active Location Details - Styled Green Container */}
                       <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-5">
                           <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Active Location</p>
                           <h3 className="text-xl font-bold text-emerald-900 leading-tight mb-4">{companySettings.locationName || 'Unknown Office'}</h3>
@@ -695,7 +697,6 @@ const TeamDashboard: React.FC = () => {
                           </div>
                       </div>
 
-                      {/* Google Maps Embed */}
                       <div className="rounded-xl overflow-hidden border border-slate-200 shadow-inner bg-slate-100 h-64 flex items-center justify-center relative flex-1 min-h-[250px]">
                           <iframe 
                               width="100%" 
@@ -710,7 +711,6 @@ const TeamDashboard: React.FC = () => {
                           ></iframe>
                       </div>
 
-                      {/* Footer Link */}
                       <div className="pt-2">
                           <a 
                               href={`https://www.google.com/maps/search/?api=1&query=${companySettings.latitude},${companySettings.longitude}`} 
@@ -725,7 +725,6 @@ const TeamDashboard: React.FC = () => {
                   </CardContent>
               </Card>
 
-              {/* Card 2: Update Geofence Form */}
               <Card className="border-slate-200 bg-white shadow-md flex flex-col h-full">
                   <CardHeader className="border-b border-slate-100 pb-4">
                       <CardTitle className="flex items-center gap-2 text-slate-800">
@@ -736,7 +735,6 @@ const TeamDashboard: React.FC = () => {
                   <CardContent className="p-6 flex-1 flex flex-col">
                       <div className={`space-y-6 flex-1`}>
                           
-                          {/* Office Name Input */}
                           <div className="space-y-2">
                               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Office Name</label>
                               <div className="relative">
@@ -751,7 +749,6 @@ const TeamDashboard: React.FC = () => {
                               </div>
                           </div>
 
-                          {/* Coordinates Inputs - NEW: Allows manual entry for remote setup */}
                           <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-2">
                                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Latitude</label>
@@ -777,7 +774,6 @@ const TeamDashboard: React.FC = () => {
                               </div>
                           </div>
 
-                          {/* Radius Slider */}
                           <div className="space-y-4">
                               <div className="flex justify-between items-center">
                                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Allowed Radius (Meters)</label>
@@ -802,7 +798,6 @@ const TeamDashboard: React.FC = () => {
                           </div>
 
                           <div className="mt-auto space-y-4 pt-6">
-                              {/* Blue GPS Button - Enabled for ALL users */}
                               <Button 
                                   onClick={handleSetCurrentLocation}
                                   disabled={isUpdatingLocation || !isManagerOrLead}
@@ -816,7 +811,6 @@ const TeamDashboard: React.FC = () => {
                               </Button>
                               {isManagerOrLead && <p className="text-center text-[10px] text-slate-400">*Stand at the office center before clicking this.</p>}
 
-                              {/* Divider & Secondary Config - Restricted to Admin/Manager */}
                               {isManagerOrLead && (
                                   <>
                                       <div className="relative flex items-center py-2">
@@ -863,7 +857,6 @@ const TeamDashboard: React.FC = () => {
   };
 
   const renderLeavesCards = () => {
-    // ... same logic
     const records = getFilteredLeaves();
     
     // Sort: Pending first, then by date desc
@@ -905,7 +898,6 @@ const TeamDashboard: React.FC = () => {
     );
   };
 
-  // ... (renderAnnouncements same as before)
   const renderAnnouncements = () => {
       const canManageAnnouncements = currentUser?.role === 'Admin' || currentUser?.role === 'Manager';
 
@@ -926,7 +918,8 @@ const TeamDashboard: React.FC = () => {
                                   value={announceMsg}
                                   onChange={(e) => setAnnounceMsg(e.target.value)}
                                   placeholder="Write your message here..."
-                                  className="w-full p-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none min-h-[100px] resize-none text-sm font-medium"
+                                  style={{ colorScheme: 'light' }}
+                                  className="w-full p-4 rounded-xl border border-slate-200 bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none min-h-[100px] resize-none text-sm font-medium text-slate-900 placeholder:text-slate-400 transition-all shadow-inner"
                               />
                               <div className="flex justify-between items-center">
                                   <div className="flex gap-2">
@@ -1031,7 +1024,7 @@ const TeamDashboard: React.FC = () => {
             {activeTab !== 'location' && activeTab !== 'announcements' && (
             <div className="w-full sm:w-auto min-w-full sm:min-w-[260px]">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Filter by Date</label>
-                <div className="relative group cursor-pointer" onClick={showPicker}>
+                <div className="relative group cursor-pointer" onClick={handleDateClick}>
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-20">
                     <Filter className="h-4 w-4 text-primary" />
                 </div>
@@ -1044,7 +1037,6 @@ const TeamDashboard: React.FC = () => {
                             cursor-pointer appearance-none relative z-10 hover:border-primary/50 transition-colors"
                     value={filterDate}
                     onChange={(e) => setFilterDate(e.target.value)}
-                    onClick={showPicker}
                 />
                 
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none z-20">
@@ -1071,12 +1063,11 @@ const TeamDashboard: React.FC = () => {
 
       {/* Navigation Tabs - Scrollable on mobile */}
       <div className="flex gap-3 overflow-x-auto pb-2 lg:pb-0 hide-scrollbar -mx-4 px-4 md:mx-0 md:px-0 snap-x">
-        <TabButton id="attendance" label="Attendance" icon={Clock} />
-        <TabButton id="breaks" label="Breaks" icon={Coffee} />
-        <TabButton id="leaves" label="Leaves" icon={CalendarOff} />
-        {(currentUser?.role === 'Manager' || currentUser?.role === 'Team Lead' || currentUser?.role === 'Admin') && <TabButton id="announcements" label="Notice Board" icon={Megaphone} />}
-        {/* Renamed Mappls Zone to Office Zone */}
-        <TabButton id="location" label="Office Zone" icon={MapIcon} />
+        <TabButton id="attendance" label="Attendance" icon={Clock} activeTab={activeTab} setActiveTab={setActiveTab} />
+        <TabButton id="breaks" label="Breaks" icon={Coffee} activeTab={activeTab} setActiveTab={setActiveTab} />
+        <TabButton id="leaves" label="Leaves" icon={CalendarOff} activeTab={activeTab} setActiveTab={setActiveTab} />
+        {(currentUser?.role === 'Manager' || currentUser?.role === 'Team Lead' || currentUser?.role === 'Admin') && <TabButton id="announcements" label="Notice Board" icon={Megaphone} activeTab={activeTab} setActiveTab={setActiveTab} />}
+        <TabButton id="location" label="Office Zone" icon={MapIcon} activeTab={activeTab} setActiveTab={setActiveTab} />
       </div>
 
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">

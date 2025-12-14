@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Employee, CompanySettings } from '../types';
+import { Employee, CompanySettings, Notification } from '../types';
 
 interface AppState {
   currentUser: Employee | null;
@@ -10,6 +10,8 @@ interface AppState {
   setThemeColor: (color: string) => void;
   companySettings: CompanySettings | null;
   setCompanySettings: (settings: CompanySettings | null) => void;
+  notifications: Notification[];
+  setNotifications: (notifications: Notification[]) => void;
 }
 
 // Helper to safely load from localStorage
@@ -57,4 +59,6 @@ export const useStore = create<AppState>((set) => ({
   },
   companySettings: null,
   setCompanySettings: (settings) => set({ companySettings: settings }),
+  notifications: [],
+  setNotifications: (notifications) => set({ notifications }),
 }));

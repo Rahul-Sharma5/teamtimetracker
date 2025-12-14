@@ -2,11 +2,11 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { getAttendanceByDate, punchIn, punchOut, getWeeklyAttendance, getCompanySettings, updateWorkLog, getAnnouncements, getTodayTeamAttendance, getEmployees, subscribeToNotifications, markNotificationAsRead, clearNotifications } from '../services/firestore';
-import { AttendanceRecord, CompanySettings, LocationData, Announcement, Employee, Notification } from '../types';
+import { getAttendanceByDate, punchIn, punchOut, getWeeklyAttendance, getCompanySettings, updateWorkLog, getAnnouncements, getTodayTeamAttendance, getEmployees } from '../services/firestore';
+import { AttendanceRecord, CompanySettings, LocationData, Announcement } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Play, Square, Clock, Calendar, Activity, History, MapPin, AlertTriangle, RefreshCw, ShieldAlert, Globe, ExternalLink, ChevronDown, FileText, Bell, Megaphone, Users, Trash2, BarChart2, Smile, Frown, Meh, Zap, Brain, Navigation } from 'lucide-react';
+import { Play, Square, Clock, Calendar, Activity, History, MapPin, AlertTriangle, RefreshCw, Globe, ChevronDown, FileText, Megaphone, Users, BarChart2, Navigation, MapPinOff } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { currentUser } = useStore();
@@ -31,11 +31,6 @@ const Dashboard: React.FC = () => {
   // Mood State
   const [selectedMood, setSelectedMood] = useState('happy');
 
-  // Notification State
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const notifRef = useRef<HTMLDivElement>(null);
-
   // Date Filter State
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +41,7 @@ const Dashboard: React.FC = () => {
   const [distance, setDistance] = useState<number>(0);
   const [checkingLocation, setCheckingLocation] = useState(false);
   const [userCoords, setUserCoords] = useState<{lat: number, lng: number, accuracy: number} | null>(null);
+  const [showLocationAlert, setShowLocationAlert] = useState(false);
 
   // Work Log State
   const [workLog, setWorkLog] = useState('');
@@ -55,27 +51,6 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
-  }, []);
-
-  // Notification Subscription
-  useEffect(() => {
-      if (currentUser) {
-          const unsubscribe = subscribeToNotifications(currentUser.id, (data) => {
-              setNotifications(data);
-          });
-          return () => unsubscribe();
-      }
-  }, [currentUser]);
-
-  // Click Outside Notification Dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
-        setShowNotifications(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const fetchData = async () => {
@@ -156,23 +131,6 @@ const Dashboard: React.FC = () => {
     fetchData();
   }, [currentUser, selectedDate]);
   
-  // Notification Handlers
-  const handleNotificationClick = async (notif: Notification) => {
-      if (!notif.read) {
-          await markNotificationAsRead(notif.id);
-      }
-      if (notif.link) {
-          navigate(notif.link);
-          setShowNotifications(false);
-      }
-  };
-
-  const handleClearAllNotifications = async () => {
-      if(currentUser) await clearNotifications(currentUser.id);
-  };
-  
-  const unreadCount = notifications.filter(n => !n.read).length;
-
   // --- GEOLOCATION LOGIC ---
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -344,9 +302,24 @@ const Dashboard: React.FC = () => {
 
   const handlePunchIn = async () => {
     if (!currentUser) return;
+    
+    // Explicitly block if location status is known to be bad
+    if (locationStatus === 'error' || locationStatus === 'denied') {
+        setShowLocationAlert(true);
+        return;
+    }
+
     setPunching(true);
     try {
         const location = await getLocationPayload();
+        
+        // If we still can't get a location (e.g. user denies dialog now)
+        if (!location) {
+            setPunching(false);
+            setShowLocationAlert(true);
+            return;
+        }
+
         await punchIn(currentUser.id, location, selectedMood);
         
         // Refresh data
@@ -367,9 +340,22 @@ const Dashboard: React.FC = () => {
 
   const handlePunchOut = async () => {
     if (!attendance || !attendance.punchIn) return;
+    
+    if (locationStatus === 'error' || locationStatus === 'denied') {
+        setShowLocationAlert(true);
+        return;
+    }
+
     setPunching(true);
     try {
         const location = await getLocationPayload();
+        
+        if (!location) {
+            setPunching(false);
+            setShowLocationAlert(true);
+            return;
+        }
+
         await punchOut(attendance.id, attendance.punchIn, location, workLog);
         fetchData();
     } catch (error) {
@@ -391,10 +377,16 @@ const Dashboard: React.FC = () => {
       }
   };
 
-  const showPicker = () => {
+  const handleDateClick = (e: React.MouseEvent) => {
+    // If the user clicked the actual input, let native behavior handle it
+    if ((e.target as HTMLElement).tagName === 'INPUT') return;
+    
+    // Otherwise (clicked icon or padding), trigger picker manually
     try {
-      dateInputRef.current?.showPicker();
-    } catch(e) {}
+        dateInputRef.current?.showPicker();
+    } catch (err) {
+        // Fallback or ignore if not supported
+    }
   };
 
   const getMoodEmoji = (mood?: string) => {
@@ -492,59 +484,8 @@ const Dashboard: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-4 w-full md:w-auto">
-            {/* Notification Bell (Moved from Sidebar) */}
-            <div className="relative z-50" ref={notifRef}>
-                <button 
-                    onClick={() => setShowNotifications(!showNotifications)}
-                    className="h-10 w-10 flex items-center justify-center rounded-full bg-white border border-slate-200 text-slate-500 hover:text-primary hover:bg-primary/10 transition-all shadow-sm relative"
-                >
-                    <Bell className="w-5 h-5" />
-                    {unreadCount > 0 && (
-                        <span className="absolute top-0 right-0 h-3 w-3 rounded-full bg-red-500 border-2 border-white animate-pulse"></span>
-                    )}
-                </button>
-
-                {/* Notifications Dropdown */}
-                {showNotifications && (
-                    <div className="absolute right-0 mt-3 w-80 bg-white rounded-2xl shadow-xl border border-slate-100 z-[100] overflow-hidden animate-in fade-in zoom-in-95 origin-top-right ring-1 ring-black/5">
-                        <div className="p-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                            <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider">Notifications</h4>
-                            {notifications.length > 0 && (
-                                <button onClick={handleClearAllNotifications} className="text-[10px] text-slate-400 hover:text-red-500 flex items-center gap-1 transition-colors">
-                                    <Trash2 className="w-3 h-3"/> Clear All
-                                </button>
-                            )}
-                        </div>
-                        <div className="max-h-80 overflow-y-auto custom-scrollbar">
-                            {notifications.length === 0 ? (
-                                <div className="p-8 text-center text-slate-400 flex flex-col items-center">
-                                    <div className="bg-slate-50 p-3 rounded-full mb-2">
-                                        <Bell className="w-6 h-6 opacity-30" />
-                                    </div>
-                                    <p className="text-xs font-medium">No new notifications</p>
-                                </div>
-                            ) : (
-                                notifications.map(notif => (
-                                    <div 
-                                        key={notif.id} 
-                                        onClick={() => handleNotificationClick(notif)}
-                                        className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer flex gap-3 ${!notif.read ? 'bg-blue-50/40' : ''}`}
-                                    >
-                                        <div className={`mt-1.5 h-2 w-2 rounded-full flex-shrink-0 ${!notif.read ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-transparent'}`}></div>
-                                        <div>
-                                            <p className={`text-sm leading-snug ${!notif.read ? 'font-bold text-slate-800' : 'text-slate-600'}`}>{notif.message}</p>
-                                            <p className="text-[10px] text-slate-400 mt-1.5 font-medium">{new Date(notif.createdAt).toLocaleDateString()} at {new Date(notif.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                )}
-            </div>
-
             {/* Date Picker Button */}
-            <div className="relative group cursor-pointer flex-1 md:w-auto" onClick={showPicker}>
+            <div className="relative group cursor-pointer flex-1 md:w-auto" onClick={handleDateClick}>
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-20">
                 <Calendar className="w-4 h-4 text-primary" />
                 </div>
@@ -577,7 +518,7 @@ const Dashboard: React.FC = () => {
                              ann.type === 'success' ? 'bg-green-50 border-green-100' : 
                              'bg-slate-50 border-slate-100'
                          }`}>
-                             <Bell className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                             <Megaphone className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
                                  ann.type === 'urgent' ? 'text-red-500' : 
                                  ann.type === 'success' ? 'text-green-500' : 
                                  'text-slate-500'
@@ -950,6 +891,41 @@ const Dashboard: React.FC = () => {
             )}
         </div>
       </div>
+
+      {showLocationAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => setShowLocationAlert(false)}></div>
+            <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200 ring-1 ring-black/5">
+                <div className="flex flex-col items-center text-center">
+                    <div className="h-14 w-14 bg-red-100 rounded-full flex items-center justify-center mb-4 ring-4 ring-white shadow-sm">
+                        <MapPinOff className="h-7 w-7 text-red-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 mb-2">Location Required</h3>
+                    <p className="text-slate-500 mb-6 text-sm font-medium leading-relaxed">
+                        We cannot verify your workspace. Please enable location services in your browser settings to proceed.
+                    </p>
+                    <div className="flex gap-3 w-full">
+                        <Button 
+                            onClick={() => setShowLocationAlert(false)}
+                            variant="ghost"
+                            className="flex-1 text-slate-500 hover:bg-slate-100 rounded-xl"
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            onClick={() => {
+                                setShowLocationAlert(false);
+                                handleRefreshLocation();
+                            }}
+                            className="flex-1 bg-primary hover:bg-primary/90 text-white rounded-xl shadow-lg shadow-primary/20"
+                        >
+                            Try Again
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

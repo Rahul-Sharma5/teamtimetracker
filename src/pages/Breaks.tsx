@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { getTodayBreaks, startBreak, endBreak } from '../services/firestore';
@@ -6,51 +7,27 @@ import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Coffee, Utensils, Timer, ChevronRight, CheckCircle2 } from 'lucide-react';
 
-const Breaks: React.FC = () => {
-  const { currentUser } = useStore();
-  const [breaks, setBreaks] = useState<BreakRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+interface BreakCardProps {
+    type: BreakType;
+    title: string;
+    icon: React.ReactNode;
+    limit: string;
+    colorClass: string;
+    breaks: BreakRecord[];
+    onStart: (type: BreakType) => void;
+    onEnd: (id: string, start: string) => void;
+}
 
-  const fetchBreaks = async () => {
-    if (!currentUser) return;
-    setLoading(true);
-    try {
-      const data = await getTodayBreaks(currentUser.id);
-      setBreaks(data);
-    } catch (error) {
-      console.error("Error fetching breaks", error);
-    } finally {
-      setLoading(false);
+const BreakCard: React.FC<BreakCardProps> = ({ type, title, icon, limit, colorClass, breaks, onStart, onEnd }) => {
+    const record = breaks.find(b => b.breakType === type);
+    const activeBreak = breaks.find(b => !b.breakEnd);
+    
+    // Status Logic
+    let status: 'completed' | 'active' | 'available' = 'available';
+    if (record) {
+        if (record.breakEnd) status = 'completed';
+        else status = 'active';
     }
-  };
-
-  useEffect(() => {
-    fetchBreaks();
-  }, [currentUser]);
-
-  const handleStartBreak = async (type: BreakType) => {
-    if (!currentUser) return;
-    await startBreak(currentUser.id, type);
-    await fetchBreaks();
-  };
-
-  const handleEndBreak = async (breakId: string, start: string) => {
-    await endBreak(breakId, start);
-    await fetchBreaks();
-  };
-
-  const getBreakStatus = (type: BreakType) => {
-    const record = breaks.find(b => b.breakType === type);
-    if (!record) return 'available';
-    if (record.breakEnd) return 'completed';
-    return 'active';
-  };
-
-  const activeBreak = breaks.find(b => !b.breakEnd);
-
-  const BreakCard = ({ type, title, icon, limit, colorClass }: { type: BreakType, title: string, icon: React.ReactNode, limit: string, colorClass: string }) => {
-    const status = getBreakStatus(type);
-    const record = breaks.find(b => b.breakType === type);
 
     return (
       <Card className={`relative overflow-hidden border-white/60 bg-white/60 backdrop-blur-xl shadow-lg transition-all duration-300 ${status === 'active' ? 'ring-2 ring-offset-2 ring-amber-400 transform scale-[1.02]' : 'hover:translate-y-1'}`}>
@@ -87,7 +64,7 @@ const Breaks: React.FC = () => {
           {status === 'available' && (
             <Button 
               className="w-full bg-slate-800 text-white hover:bg-primary transition-colors rounded-xl py-5 font-medium shadow-md" 
-              onClick={() => handleStartBreak(type)}
+              onClick={() => onStart(type)}
               disabled={!!activeBreak}
             >
               Start Break <ChevronRight className="ml-2 w-4 h-4" />
@@ -97,7 +74,7 @@ const Breaks: React.FC = () => {
           {status === 'active' && record && (
             <Button 
               className="w-full bg-amber-500 hover:bg-amber-600 text-white border-none rounded-xl py-5 font-bold shadow-lg shadow-amber-200" 
-              onClick={() => handleEndBreak(record.id, record.breakStart)}
+              onClick={() => onEnd(record.id, record.breakStart)}
             >
               End Break Now
             </Button>
@@ -111,7 +88,42 @@ const Breaks: React.FC = () => {
         </CardContent>
       </Card>
     );
+};
+
+const Breaks: React.FC = () => {
+  const { currentUser } = useStore();
+  const [breaks, setBreaks] = useState<BreakRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchBreaks = async () => {
+    if (!currentUser) return;
+    setLoading(true);
+    try {
+      const data = await getTodayBreaks(currentUser.id);
+      setBreaks(data);
+    } catch (error) {
+      console.error("Error fetching breaks", error);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    fetchBreaks();
+  }, [currentUser]);
+
+  const handleStartBreak = async (type: BreakType) => {
+    if (!currentUser) return;
+    await startBreak(currentUser.id, type);
+    await fetchBreaks();
+  };
+
+  const handleEndBreak = async (breakId: string, start: string) => {
+    await endBreak(breakId, start);
+    await fetchBreaks();
+  };
+
+  const activeBreak = breaks.find(b => !b.breakEnd);
 
   if (loading) return <div className="p-8 text-slate-500 animate-pulse">Loading breaks...</div>;
 
@@ -146,6 +158,9 @@ const Breaks: React.FC = () => {
            icon={<Utensils className="h-6 w-6 text-emerald-500" />} 
            limit="60 min" 
            colorClass="bg-emerald-500"
+           breaks={breaks}
+           onStart={handleStartBreak}
+           onEnd={handleEndBreak}
         />
         <BreakCard 
            type="short1" 
@@ -153,6 +168,9 @@ const Breaks: React.FC = () => {
            icon={<Coffee className="h-6 w-6 text-teal-500" />} 
            limit="15 min" 
            colorClass="bg-teal-500"
+           breaks={breaks}
+           onStart={handleStartBreak}
+           onEnd={handleEndBreak}
         />
         <BreakCard 
            type="short2" 
@@ -160,6 +178,9 @@ const Breaks: React.FC = () => {
            icon={<Coffee className="h-6 w-6 text-lime-500" />} 
            limit="15 min" 
            colorClass="bg-lime-500"
+           breaks={breaks}
+           onStart={handleStartBreak}
+           onEnd={handleEndBreak}
         />
       </div>
     </div>

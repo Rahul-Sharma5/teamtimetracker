@@ -330,6 +330,8 @@ export const subscribeToNotifications = (userId: string, callback: (notification
         // Client side sort
         notifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         callback(notifs);
+    }, (error) => {
+        console.error("Notification subscription error:", error);
     });
 };
 

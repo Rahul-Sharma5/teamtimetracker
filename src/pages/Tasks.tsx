@@ -1,4 +1,5 @@
 
+import { createPortal } from 'react-dom';
 import React, { useEffect, useState, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { getTasks, createTask, updateTask, updateTaskStatus, deleteTask, getEmployees, getTaskComments, addTaskComment } from '../services/firestore';
@@ -671,7 +672,7 @@ const Tasks: React.FC = () => {
       )}
 
       {/* Delete Confirmation Modal */}
-      {isDeleteModalOpen && (
+      {isDeleteModalOpen && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => setIsDeleteModalOpen(false)}></div>
            <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
@@ -699,11 +700,12 @@ const Tasks: React.FC = () => {
                  </div>
               </div>
            </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Create/Edit Task Modal */}
-      {isModalOpen && (
+      {isModalOpen && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => setIsModalOpen(false)}></div>
           
@@ -828,7 +830,8 @@ const Tasks: React.FC = () => {
                  </div>
              )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

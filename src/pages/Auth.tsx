@@ -97,15 +97,51 @@ const Auth: React.FC = () => {
   ];
 
   // --- Recaptcha Setup ---
-  const setupRecaptcha = (containerId: string) => {
-    if ((window as any).recaptchaVerifier) {
-      (window as any).recaptchaVerifier.clear();
+  useEffect(() => {
+    let recaptchaVerifier: RecaptchaVerifier | null = null;
+
+    if (authMode === 'phoneLogin' || authMode === 'forgot') {
+      try {
+        // Clear existing verifier if any
+        if ((window as any).recaptchaVerifier) {
+          try {
+            (window as any).recaptchaVerifier.clear();
+          } catch (e) {
+            console.warn("Failed to clear old recaptcha", e);
+          }
+        }
+
+        // Initialize new verifier
+        recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          size: 'invisible',
+          callback: () => {
+            console.log('Recaptcha resolved');
+          },
+          'expired-callback': () => {
+            console.warn('Recaptcha expired');
+            // Optional: reset UI or re-initialize
+          }
+        });
+
+        (window as any).recaptchaVerifier = recaptchaVerifier;
+      } catch (error) {
+        console.error("Recaptcha init error:", error);
+      }
     }
-    (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
-      size: 'invisible',
-      callback: () => console.log('Recaptcha resolved')
-    });
-  };
+
+    return () => {
+      if (recaptchaVerifier) {
+        try {
+          recaptchaVerifier.clear();
+        } catch (e) {
+          console.warn("Cleanup error", e);
+        }
+        if ((window as any).recaptchaVerifier === recaptchaVerifier) {
+          delete (window as any).recaptchaVerifier;
+        }
+      }
+    };
+  }, [authMode]);
 
   // --- Google Auth ---
   const handleGoogleAuth = async () => {
@@ -151,19 +187,46 @@ const Auth: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    const formattedPhone = phone.trim();
+
+    if (!formattedPhone) {
+      setError("Please enter a phone number.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      const user = await getEmployeeByPhone(phone);
+      const user = await getEmployeeByPhone(formattedPhone);
       if (!user) throw new Error("Phone number not registered to any account.");
       setTargetUser(user);
 
-      setupRecaptcha('recaptcha-container');
+      if (!(window as any).recaptchaVerifier) {
+        throw new Error("Recaptcha not initialized. Please refresh and try again.");
+      }
+
       const appVerifier = (window as any).recaptchaVerifier;
-      const confirmation = await signInWithPhoneNumber(auth, phone, appVerifier);
+      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
       setConfirmationResult(confirmation);
       setForgotStep('otp');
     } catch (err: any) {
-      setError(err.message || "Failed to send code. Ensure phone is in +[code][number] format.");
-      if ((window as any).recaptchaVerifier) (window as any).recaptchaVerifier.clear();
+      console.error("Phone Auth Error:", err);
+      if (err.code === 'auth/invalid-phone-number') {
+        setError("Invalid phone number format. Use international format (e.g. +1234567890).");
+      } else if (err.code === 'auth/billing-not-enabled') {
+        setError("Firebase Billing (Blaze Plan) required for real SMS. Use a Test Phone Number (in Firebase Console) for development.");
+      } else if (err.code === 'auth/too-many-requests') {
+        setError("Too many attempts. Please try again later.");
+      } else {
+        setError(err.message || "Failed to send verification code.");
+      }
+      
+      // Reset recaptcha on error to allow retry
+      if ((window as any).recaptchaVerifier) {
+        try {
+           // We might need to render it again if it was used
+           (window as any).recaptchaVerifier.render();
+        } catch(e) { /* ignore */ }
+      }
     } finally {
       setLoading(false);
     }
@@ -349,7 +412,7 @@ const Auth: React.FC = () => {
         <div className="relative z-10 flex items-center gap-4 text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em]">
           <span>Enterprise Edition</span>
           <span className="h-1 w-1 bg-slate-700 rounded-full"></span>
-          <span>v5.0.0</span>
+          <span>v6.0.0</span>
         </div>
       </div>
 

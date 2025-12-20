@@ -1,11 +1,14 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-// Initialize Gemini Client
-// We assume process.env.API_KEY is available in the environment
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// We assume process.env.API_KEY is available in the environment via polyfill if needed
+const getAIInstance = () => {
+  const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) || "";
+  return new GoogleGenAI({ apiKey });
+};
 
-const MODEL_NAME = 'gemini-2.5-flash';
+// Using gemini-3-flash-preview for basic text tasks according to guidelines
+const MODEL_NAME = 'gemini-3-flash-preview';
 
 /**
  * Refines a user's rough work log into a professional, concise entry.
@@ -14,6 +17,7 @@ export const refineWorkLog = async (text: string): Promise<string> => {
   if (!text.trim()) return "";
   
   try {
+    const ai = getAIInstance();
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
       contents: `You are a helpful office assistant. Rewrite the following work log to be professional, clear, and concise. 
@@ -25,7 +29,6 @@ export const refineWorkLog = async (text: string): Promise<string> => {
     return response.text?.trim() || text;
   } catch (error) {
     console.error("Gemini AI Error (Work Log):", error);
-    // Fallback: return original text if AI fails
     return text;
   }
 };
@@ -35,6 +38,7 @@ export const refineWorkLog = async (text: string): Promise<string> => {
  */
 export const enhanceTaskDescription = async (title: string, currentDesc: string): Promise<string> => {
   try {
+    const ai = getAIInstance();
     const prompt = `
       Act as a Senior Project Manager. I have a task titled "${title}" with the following rough notes: "${currentDesc}".
       
@@ -65,20 +69,18 @@ export const generateTeamBriefing = async (
   leaves: any[], 
   employees: any[]
 ): Promise<string> => {
-    // 1. Prepare data summary
     const totalEmployees = employees.length;
-    const presentCount = attendance.filter(a => !a.punchOut).length; // Currently active
+    const presentCount = attendance.filter(a => !a.punchOut).length;
     const completedCount = attendance.filter(a => a.punchOut).length;
     const onLeaveCount = leaves.filter(l => l.status === 'approved').length;
     
-    // Get list of active people names for context
     const activeNames = attendance
         .filter(a => !a.punchOut)
         .map(a => {
             const emp = employees.find((e: any) => e.id === a.employeeId);
             return emp ? emp.name : 'Unknown';
         })
-        .slice(0, 5); // Limit to 5 names to save tokens/complexity
+        .slice(0, 5);
 
     const prompt = `
       You are a cheerful Team Coordinator. Write a short Daily Team Briefing (max 3 sentences) based on this live status:
@@ -94,6 +96,7 @@ export const generateTeamBriefing = async (
     `;
     
     try {
+        const ai = getAIInstance();
         const response = await ai.models.generateContent({
             model: MODEL_NAME,
             contents: prompt,

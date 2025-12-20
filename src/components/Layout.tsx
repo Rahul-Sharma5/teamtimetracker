@@ -8,7 +8,6 @@ import { Button } from './ui/Button';
 import { Notification } from '../types';
 import { clsx } from 'clsx';
 
-// Extracted Component to prevent re-creation on every render
 interface NotificationListProps {
   notifications: Notification[];
   onClear: () => void;
@@ -57,20 +56,14 @@ export const Layout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
-  // Notification UI State
   const [showNotifications, setShowNotifications] = useState(false);
-  
-  // Use separate refs for mobile and desktop to avoid collision
   const mobileNotifRef = useRef<HTMLDivElement>(null);
   const desktopNotifRef = useRef<HTMLDivElement>(null);
 
-  // Redirect to login if no user is found
   if (!currentUser) {
     return <Navigate to="/" replace />;
   }
 
-  // Handle Notifications Subscription globally
   useEffect(() => {
     if (currentUser) {
         const unsubscribe = subscribeToNotifications(currentUser.id, (data) => {
@@ -80,17 +73,14 @@ export const Layout: React.FC = () => {
     }
   }, [currentUser, setNotifications]);
 
-  // Click Outside Notification Dropdown (Robust Logic)
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target;
-      // Ensure target is a Node before checking contains
       if (!target || !(target instanceof Node)) return;
       
       const isInsideMobile = mobileNotifRef.current?.contains(target);
       const isInsideDesktop = desktopNotifRef.current?.contains(target);
 
-      // Only close if the click is OUTSIDE both containers
       if (!isInsideMobile && !isInsideDesktop) {
         setShowNotifications(false);
       }
@@ -101,7 +91,6 @@ export const Layout: React.FC = () => {
   }, []);
 
   const handleLogout = () => {
-    // Defer state update to prevent React Error #520 (Node removal during event bubbling)
     setTimeout(() => {
         setCurrentUser(null);
         navigate('/');
@@ -136,7 +125,6 @@ export const Layout: React.FC = () => {
   };
   
   const unreadCount = notifications.filter(n => !n.read).length;
-  
   const isAdmin = currentUser.role === 'Admin';
   const isManager = currentUser.role === 'Manager';
   const canManage = isAdmin || isManager;
@@ -157,8 +145,6 @@ export const Layout: React.FC = () => {
 
   return (
     <div className="h-screen overflow-hidden bg-slate-50 flex font-sans text-slate-900">
-      
-      {/* Mobile/Tablet Overlay */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 lg:hidden animate-in fade-in duration-200"
@@ -166,7 +152,6 @@ export const Layout: React.FC = () => {
         />
       )}
 
-      {/* Sidebar */}
       <aside 
         className={clsx(
           "fixed inset-y-0 left-0 z-50 w-72 bg-white/80 backdrop-blur-md border-r border-slate-200 flex flex-col shadow-2xl lg:shadow-sm h-full transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0",
@@ -180,7 +165,6 @@ export const Layout: React.FC = () => {
             </div>
             <span className="text-2xl font-extrabold text-slate-800 tracking-tight">TeamTime</span>
           </div>
-          {/* Close Button Mobile/Tablet */}
           <button 
             onClick={() => setIsSidebarOpen(false)}
             className="lg:hidden p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
@@ -189,7 +173,6 @@ export const Layout: React.FC = () => {
           </button>
         </div>
 
-        {/* User Profile Card - Simplified */}
         <div className="px-6 pt-6 pb-2 relative z-50 flex-shrink-0">
           <div className="p-4 bg-gradient-to-br from-slate-50 to-white rounded-2xl border border-slate-100 flex items-center gap-3 shadow-sm relative">
             <div className={`h-12 w-12 rounded-xl flex items-center justify-center font-bold text-xl shadow-inner border flex-shrink-0 overflow-hidden
@@ -213,7 +196,7 @@ export const Layout: React.FC = () => {
               <NavLink
                 key={item.to}
                 to={item.to}
-                onClick={() => setIsSidebarOpen(false)} // Close menu on click
+                onClick={() => setIsSidebarOpen(false)}
                 className={({ isActive }) =>
                   clsx(
                     "group flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200",
@@ -249,10 +232,7 @@ export const Layout: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content with subtle theme hue background */}
       <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
-          
-          {/* Mobile/Tablet Header (Visible on lg:hidden) */}
           <header className="lg:hidden bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-30">
               <div className="flex items-center gap-3">
                   <button 
@@ -264,7 +244,6 @@ export const Layout: React.FC = () => {
                   <span className="font-extrabold text-lg text-slate-800 tracking-tight">TeamTime</span>
               </div>
               <div className="flex items-center gap-3">
-                  {/* Mobile Notification Bell */}
                   <div className="relative" ref={mobileNotifRef}>
                       <button 
                           onClick={() => setShowNotifications(!showNotifications)}
@@ -275,7 +254,6 @@ export const Layout: React.FC = () => {
                               <span className="absolute top-0.5 right-0.5 h-2.5 w-2.5 rounded-full bg-red-500 border-2 border-white animate-pulse"></span>
                           )}
                       </button>
-                      {/* Mobile Notification Panel Dropdown */}
                       {showNotifications && (
                           <div className="absolute top-full right-[-10px]">
                               <NotificationList notifications={notifications} onClear={handleClearAllNotifications} onRead={handleNotificationClick} />
@@ -290,12 +268,10 @@ export const Layout: React.FC = () => {
               </div>
           </header>
 
-          {/* Desktop Header (Visible on lg+) */}
           <header className="hidden lg:flex items-center justify-between px-8 py-5 bg-white/80 backdrop-blur-xl border-b border-slate-100 sticky top-0 z-40 transition-all">
               <h2 className="text-2xl font-bold text-slate-800 tracking-tight">{getPageTitle()}</h2>
               
               <div className="flex items-center gap-6">
-                  {/* Desktop Notification Bell */}
                   <div className="relative" ref={desktopNotifRef}>
                       <button 
                           onClick={() => setShowNotifications(!showNotifications)}
@@ -317,7 +293,6 @@ export const Layout: React.FC = () => {
                       )}
                   </div>
 
-                  {/* Desktop Profile Snippet */}
                   <div className="flex items-center gap-3 pl-6 border-l border-slate-200">
                       <div className="text-right hidden xl:block">
                           <p className="text-sm font-bold text-slate-800">{currentUser.name}</p>
@@ -332,12 +307,9 @@ export const Layout: React.FC = () => {
               </div>
           </header>
 
-          <main className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-10 scroll-smooth relative z-0">
-             {/* Subtle background decorations for internal pages too */}
+          <main className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-10 scroll-smooth relative">
              <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none z-0"></div>
-             
-             {/* Main Content Area */}
-             <div className="max-w-6xl mx-auto relative z-10 pb-20 md:pb-0 lg:pr-16">
+             <div className="max-w-6xl mx-auto relative pb-20 md:pb-0 lg:pr-16">
                <Outlet />
              </div>
           </main>

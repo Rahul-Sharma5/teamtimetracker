@@ -47,7 +47,7 @@ export interface BreakRecord {
   duration: number; // In minutes
 }
 
-export type LeaveStatus = 'pending' | 'approved' | 'rejected';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancel_requested' | 'cancelled';
 
 export interface LeaveRecord {
   id: string;

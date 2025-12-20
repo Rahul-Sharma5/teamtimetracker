@@ -1,16 +1,23 @@
+
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
-import { applyLeave, getLeaves, getEmployees } from '../services/firestore';
+import { applyLeave, getLeaves, getEmployees, requestLeaveCancellation } from '../services/firestore';
 import { LeaveRecord, Employee } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { CalendarOff, Plus, CalendarDays, FileText, UserCheck, X, Clock, Check, Briefcase, Calendar, ChevronDown } from 'lucide-react';
+import { CalendarOff, Plus, CalendarDays, FileText, UserCheck, X, Clock, Check, Briefcase, Calendar, ChevronDown, RotateCcw, Loader2, AlertCircle } from 'lucide-react';
 
 const Leaves: React.FC = () => {
   const { currentUser } = useStore();
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
   const [managers, setManagers] = useState<Employee[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Cancellation Modal State
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [targetLeaveId, setTargetLeaveId] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState<string | null>(null);
   
   // Form State
   const [reason, setReason] = useState('');
@@ -20,86 +27,115 @@ const Leaves: React.FC = () => {
   const [isHalfDay, setIsHalfDay] = useState(false);
   const [halfDayType, setHalfDayType] = useState<'first' | 'second'>('first');
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (currentUser) {
-        // Fetch Leaves
-        const data = await getLeaves(currentUser.id);
-        const sorted = data.sort((a, b) => new Date(b.dateFrom).getTime() - new Date(a.dateFrom).getTime());
-        setLeaves(sorted);
+  const fetchData = async () => {
+    if (currentUser) {
+      // CRITICAL: Only show leaves for the CURRENT user
+      const data = await getLeaves(currentUser.id);
+      const sorted = data.sort((a, b) => new Date(b.dateFrom).getTime() - new Date(a.dateFrom).getTime());
+      setLeaves(sorted);
 
-        // Fetch Employees to populate Managers dropdown
-        const allEmployees = await getEmployees();
-        
-        let potentialApprovers: Employee[] = [];
+      // Fetch potential approvers
+      const allEmployees = await getEmployees();
+      let potentialApprovers: Employee[] = [];
 
-        // Rule: Managers send leave request only to Admin
-        if (currentUser.role === 'Manager') {
-            potentialApprovers = allEmployees.filter(e => e.role === 'Admin');
-        } 
-        // Rule: Employees send leave request to Admin, Manager both
-        else {
-            potentialApprovers = allEmployees.filter(e => e.role === 'Manager' || e.role === 'Admin');
-        }
-
-        // Filter out self just in case an Admin is applying
-        setManagers(potentialApprovers.filter(e => e.id !== currentUser.id));
+      // Logic: Managers can only send requests to Admin. Employees can send to Manager or Admin.
+      if (currentUser.role === 'Manager') {
+          potentialApprovers = allEmployees.filter(e => e.role === 'Admin');
+      } else {
+          potentialApprovers = allEmployees.filter(e => e.role === 'Manager' || e.role === 'Admin');
       }
-    };
+      // Filter out self just in case an Admin is viewing
+      setManagers(potentialApprovers.filter(e => e.id !== currentUser.id));
+    }
+  };
+
+  useEffect(() => {
     fetchData();
-  }, [currentUser, showForm]);
+  }, [currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser) return;
+    if (!currentUser || !toWhom) {
+        alert("Please select a reporting manager.");
+        return;
+    }
 
-    // Resolve the Approver ID from the selected name for targeted notifications
-    const selectedManager = managers.find(m => m.name === toWhom);
-    const approverId = selectedManager?.id;
+    const duration = calculateDuration();
+    if (duration <= 0) {
+        alert("Please select valid dates.");
+        return;
+    }
 
-    // Pass currentUser.name for the notification system
-    await applyLeave(
-        currentUser.id, 
-        currentUser.name, 
-        dateFrom, 
-        dateTo, 
-        reason, 
-        toWhom, 
-        isHalfDay, 
-        halfDayType,
-        approverId // Targeted notification ID
-    );
-    
-    // Reset
-    setReason('');
-    setDateFrom('');
-    setDateTo('');
-    setToWhom('');
-    setIsHalfDay(false);
-    setHalfDayType('first');
-    setShowForm(false);
+    setIsSubmitting(true);
+    try {
+        const selectedManager = managers.find(m => m.name === toWhom);
+        const approverId = selectedManager?.id;
+
+        await applyLeave(
+            currentUser.id, 
+            currentUser.name, 
+            dateFrom, 
+            isHalfDay ? dateFrom : dateTo, // Ensure dateTo is correct even if not synced in state
+            reason, 
+            toWhom, 
+            isHalfDay, 
+            halfDayType,
+            approverId
+        );
+        
+        // Reset and hide form
+        setReason('');
+        setDateFrom('');
+        setDateTo('');
+        setToWhom('');
+        setIsHalfDay(false);
+        setHalfDayType('first');
+        setShowForm(false);
+        
+        // Refresh local list
+        await fetchData();
+    } catch (err) {
+        console.error("Submission error:", err);
+        alert("Failed to submit leave request.");
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
-  // Helper to calculate duration
+  const handleOpenCancelModal = (leaveId: string) => {
+      setTargetLeaveId(leaveId);
+      setCancelModalOpen(true);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!currentUser || !targetLeaveId) return;
+    
+    setIsCancelling(targetLeaveId);
+    try {
+        await requestLeaveCancellation(targetLeaveId, currentUser.name);
+        setCancelModalOpen(false);
+        setTargetLeaveId(null);
+        await fetchData();
+    } catch (e) {
+        console.error("Cancellation request error:", e);
+        alert("Failed to request cancellation.");
+    } finally {
+        setIsCancelling(null);
+    }
+  };
+
   const calculateDuration = () => {
     if (isHalfDay) return 0.5;
     if (!dateFrom || !dateTo) return 0;
-    
     const start = new Date(dateFrom);
     const end = new Date(dateTo);
-    
     if (end < start) return 0;
-    
-    // Difference in milliseconds
     const diff = end.getTime() - start.getTime();
-    // Convert to days
     const days = Math.round(diff / (1000 * 60 * 60 * 24));
-    return days + 1; // Inclusive
+    return days + 1;
   };
 
   const totalDays = calculateDuration();
-
-  // Stats Logic
   const totalApprovedLeaves = leaves.filter(l => l.status === 'approved').length;
   const annualAllowance = 24; 
   const remainingLeaves = Math.max(0, annualAllowance - totalApprovedLeaves);
@@ -157,15 +193,15 @@ const Leaves: React.FC = () => {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Request History</h2>
-          <p className="text-slate-500">View past requests or submit a new one.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">My Leave History</h2>
+          <p className="text-slate-500">View and manage your personal leave requests.</p>
         </div>
         <Button 
           onClick={() => setShowForm(!showForm)} 
-          className={`${showForm ? 'bg-slate-200 text-slate-800 hover:bg-slate-300' : 'bg-gradient-to-r from-primary to-primary/90 hover:to-primary text-white shadow-lg shadow-primary/30'} transition-all rounded-xl px-6 py-4 font-bold`}
+          className={`${showForm ? 'bg-slate-200 text-slate-800 hover:bg-slate-300' : 'bg-gradient-to-r from-primary to-primary/90 hover:to-primary text-white shadow-lg shadow-primary/30'} transition-all rounded-xl px-6 py-4 font-bold border-none h-12`}
         >
           {showForm ? (
-            <><X className="mr-2 h-4 w-4" /> Cancel Request</>
+            <><X className="mr-2 h-4 w-4" /> Close Form</>
           ) : (
             <><Plus className="mr-2 h-4 w-4" /> Apply New Leave</>
           )}
@@ -180,7 +216,6 @@ const Leaves: React.FC = () => {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               
-              {/* Duration Toggle */}
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 block">Leave Duration</label>
                  <div className="flex gap-4">
@@ -242,7 +277,7 @@ const Leaves: React.FC = () => {
                         value={dateFrom}
                         onChange={(e) => {
                             setDateFrom(e.target.value);
-                            setDateTo(e.target.value); // Sync for logic simplicity
+                            setDateTo(e.target.value); // Sync internally
                         }}
                       />
                     </div>
@@ -268,7 +303,6 @@ const Leaves: React.FC = () => {
                 )}
               </div>
 
-              {/* Total Days Display */}
               {totalDays > 0 && (
                 <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center justify-between">
                     <span className="text-xs font-bold text-primary uppercase tracking-wide">Total Leave Duration</span>
@@ -285,7 +319,7 @@ const Leaves: React.FC = () => {
                 <textarea 
                   required
                   className="flex min-h-[100px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm resize-none"
-                  placeholder="Please describe the reason for your leave..."
+                  placeholder="Why are you taking this leave?"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                 />
@@ -314,7 +348,8 @@ const Leaves: React.FC = () => {
             </div>
 
               <div className="flex justify-end pt-2">
-                <Button type="submit" className="bg-gradient-to-r from-primary to-primary/80 hover:to-primary text-white px-8 py-6 rounded-xl font-bold shadow-lg shadow-primary/30 transition-transform active:scale-95">
+                <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-primary to-primary/80 hover:to-primary text-white px-8 py-6 rounded-xl font-bold shadow-lg shadow-primary/30 active:scale-95 border-none h-14">
+                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin mr-2"/> : null}
                   Submit Request
                 </Button>
               </div>
@@ -328,7 +363,7 @@ const Leaves: React.FC = () => {
           <div className="text-center py-16 text-slate-400 bg-white/50 rounded-2xl border border-dashed border-slate-300">
             <CalendarOff className="h-12 w-12 mx-auto mb-3 opacity-50" />
             <p className="text-lg font-medium">No leave history found.</p>
-            <p className="text-sm">Your approved and pending leaves will appear here.</p>
+            <p className="text-sm">Requests you submit will appear here.</p>
           </div>
         ) : (
           leaves.map((leave) => (
@@ -338,8 +373,10 @@ const Leaves: React.FC = () => {
                     <span className={`px-3 py-1 text-xs rounded-full font-bold uppercase tracking-wide
                       ${leave.status === 'approved' ? 'bg-green-100 text-green-700' : 
                         leave.status === 'rejected' ? 'bg-red-100 text-red-700' : 
+                        leave.status === 'cancel_requested' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
+                        leave.status === 'cancelled' ? 'bg-slate-100 text-slate-500' :
                         'bg-amber-100 text-amber-700'}`}>
-                      {leave.status}
+                      {leave.status === 'cancel_requested' ? 'Cancellation Pending' : leave.status}
                     </span>
                     
                     {leave.isHalfDay && (
@@ -353,7 +390,7 @@ const Leaves: React.FC = () => {
                   
                   {leave.adminResponse && (
                       <div className="mt-3 bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm">
-                          <span className="font-bold text-slate-500 text-xs uppercase block mb-1">Manager Response</span>
+                          <span className="font-bold text-slate-500 text-xs uppercase block mb-1">Manager Note</span>
                           <span className="text-slate-700">{leave.adminResponse}</span>
                       </div>
                   )}
@@ -370,14 +407,60 @@ const Leaves: React.FC = () => {
                   </div>
                 </div>
                 
-                <div className="hidden md:flex flex-col items-end justify-center pl-6 border-l border-slate-100">
-                   <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Applied On</span>
-                   <span className="text-sm font-medium text-slate-700">{new Date(leave.appliedOn).toLocaleDateString()}</span>
+                <div className="flex flex-col items-end justify-center md:pl-6 md:border-l border-slate-100 gap-2">
+                   {(leave.status === 'approved' || leave.status === 'pending') && (
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="bg-white text-red-500 border-red-100 hover:bg-red-50 h-9 rounded-lg font-bold text-xs"
+                            onClick={() => handleOpenCancelModal(leave.id)}
+                            disabled={isCancelling === leave.id}
+                        >
+                            {isCancelling === leave.id ? <Loader2 className="w-3 h-3 animate-spin mr-1"/> : <RotateCcw className="w-3 h-3 mr-1" />}
+                            Request Cancel
+                        </Button>
+                   )}
+                   <div className="hidden md:flex flex-col items-end">
+                        <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Applied On</span>
+                        <span className="text-sm font-medium text-slate-700">{new Date(leave.appliedOn).toLocaleDateString()}</span>
+                   </div>
                 </div>
             </div>
           ))
         )}
       </div>
+
+      {/* Modern Cancellation Confirmation Modal */}
+      {cancelModalOpen && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-[#0f172a]/60 backdrop-blur-sm">
+              <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200 ring-1 ring-black/5">
+                  <div className="flex flex-col items-center text-center">
+                      <div className="h-14 w-14 bg-red-100 rounded-full flex items-center justify-center mb-4 ring-4 ring-white shadow-sm">
+                          <RotateCcw className="h-7 w-7 text-red-600" />
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900 mb-2">Cancel Leave Request?</h3>
+                      <p className="text-slate-500 mb-6 text-sm font-medium leading-relaxed">
+                          This request will be sent to your manager for approval. The leave will be revoked once they confirm.
+                      </p>
+                      <div className="flex gap-3 w-full">
+                          <Button 
+                            onClick={() => { setCancelModalOpen(false); setTargetLeaveId(null); }} 
+                            variant="ghost" 
+                            className="flex-1 text-slate-500 hover:bg-slate-100 rounded-xl font-bold"
+                          >
+                              No, Keep it
+                          </Button>
+                          <Button 
+                            onClick={handleConfirmCancel} 
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-lg border-none font-bold h-12"
+                          >
+                              {isCancelling ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Yes, Request Cancel'}
+                          </Button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };

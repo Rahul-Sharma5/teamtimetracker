@@ -1,0 +1,7 @@
+{
+  "name": "TeamTimeTracker-V5-Customization",
+  "description": "A modern, Firebase-backed time tracking application for teams to manage attendance, breaks, and leaves without complex authentication.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

@@ -2,8 +2,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { getAllAttendance, getEmployees, getAllBreaks, getLeaves, getCompanySettings, updateCompanySettings, updateLeaveStatus, getAnnouncements, createAnnouncement, deleteAnnouncement } from '../services/firestore';
-import { AttendanceRecord, BreakRecord, LeaveRecord, CompanySettings, LocationData, Announcement, Employee } from '../types';
-import { Users, Coffee, CalendarOff, Clock, Filter, ChevronRight, Calendar, MapPin, Navigation, Save, Loader2, Globe, ExternalLink, Download, FileText, Utensils, CheckCircle2, AlertCircle, Timer, ArrowRight, Check, X, ShieldCheck, Megaphone, Trash2, Bell, Map as MapIcon, LocateFixed, RotateCcw, Lock, Crosshair } from 'lucide-react';
+import { AttendanceRecord, BreakRecord, LeaveRecord, CompanySettings, LocationData, Announcement, Employee, LeaveStatus } from '../types';
+import { Users, Coffee, CalendarOff, Clock, Filter, ChevronRight, Calendar, MapPin, Navigation, Save, Loader2, Globe, ExternalLink, Download, FileText, Utensils, CheckCircle2, AlertCircle, Timer, ArrowRight, Check, X, ShieldCheck, Megaphone, Trash2, Bell, Map as MapIcon, LocateFixed, RotateCcw, Lock, Crosshair, UserMinus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 
@@ -66,7 +66,7 @@ interface LeaveCardItemProps {
   showActions: boolean;
   employees: Record<string, Employee>;
   processingId: string | null;
-  onAction: (id: string, status: 'approved' | 'rejected', note?: string) => void;
+  onAction: (id: string, status: LeaveStatus, note?: string) => void;
 }
 
 const LeaveCardItem: React.FC<LeaveCardItemProps> = ({ 
@@ -83,10 +83,16 @@ const LeaveCardItem: React.FC<LeaveCardItemProps> = ({
     const isProcessing = processingId === rec.id;
     const isAnyProcessing = processingId !== null;
     const [note, setNote] = useState(rec.adminResponse || '');
+    
+    const isCancellationRequest = rec.status === 'cancel_requested';
 
     return (
         <div className={`group flex flex-col gap-4 bg-white/70 backdrop-blur-md border rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all 
-            ${rec.status === 'pending' ? 'border-amber-200/50' : rec.status === 'rejected' ? 'border-red-200/50 bg-red-50/10' : 'border-emerald-200/50 bg-emerald-50/10'}`}>
+            ${rec.status === 'pending' ? 'border-amber-200/50' : 
+              rec.status === 'cancel_requested' ? 'border-purple-300 shadow-md ring-1 ring-purple-100' :
+              rec.status === 'rejected' ? 'border-red-200/50 bg-red-50/10' : 
+              rec.status === 'cancelled' ? 'border-slate-200 bg-slate-50/50' :
+              'border-emerald-200/50 bg-emerald-50/10'}`}>
            <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 flex-shrink-0">
@@ -112,11 +118,14 @@ const LeaveCardItem: React.FC<LeaveCardItemProps> = ({
               <div className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 whitespace-nowrap
                 ${rec.status === 'approved' ? 'bg-green-100 text-green-700' : 
                     rec.status === 'rejected' ? 'bg-red-100 text-red-700' : 
+                    rec.status === 'cancel_requested' ? 'bg-purple-100 text-purple-700' :
+                    rec.status === 'cancelled' ? 'bg-slate-100 text-slate-600' :
                     'bg-amber-100 text-amber-700'}`}>
                 {rec.status === 'approved' && <CheckCircle2 className="w-3 h-3"/>}
                 {rec.status === 'rejected' && <AlertCircle className="w-3 h-3"/>}
+                {rec.status === 'cancel_requested' && <RotateCcw className="w-3 h-3"/>}
                 {rec.status === 'pending' && <Timer className="w-3 h-3"/>}
-                {rec.status}
+                {rec.status === 'cancel_requested' ? 'Cancel Requested' : rec.status}
               </div>
            </div>
 
@@ -143,34 +152,42 @@ const LeaveCardItem: React.FC<LeaveCardItemProps> = ({
                         )}
                     </span>
                     <span className="hidden sm:inline text-slate-300">|</span>
-                    <span className="w-full sm:w-auto truncate">Approver: {rec.toWhom}</span>
+                    <span className="w-full sm:w-auto truncate text-slate-400">Approver: <span className="text-slate-600 font-bold">{rec.toWhom}</span></span>
                </div>
 
                {/* Admin Actions */}
                {showActions && (
                    <div className="pt-2 flex flex-col gap-2">
-                       <input 
-                          type="text" 
-                          placeholder="Add note (optional for approval, required for rejection)..." 
-                          style={{ colorScheme: 'light' }}
-                          className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all shadow-sm"
-                          value={note}
-                          onChange={(e) => setNote(e.target.value)}
-                          disabled={isAnyProcessing}
-                       />
+                       {isCancellationRequest ? (
+                           <div className="mb-2 p-2 bg-purple-50 border border-purple-100 rounded-lg">
+                               <p className="text-[10px] font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1">
+                                   <RotateCcw className="w-3 h-3" /> Cancellation Approval Required
+                               </p>
+                           </div>
+                       ) : (
+                            <input 
+                                type="text" 
+                                placeholder="Add note (optional)..." 
+                                style={{ colorScheme: 'light' }}
+                                className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all shadow-sm"
+                                value={note}
+                                onChange={(e) => setNote(e.target.value)}
+                                disabled={isAnyProcessing}
+                            />
+                       )}
                        <div className="grid grid-cols-2 gap-3">
                            <Button 
                               size="sm" 
                               onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  // Defer state update to next tick to avoid React #520 error due to unmounting during event
-                                  setTimeout(() => onAction(rec.id, 'approved', note), 0);
+                                  const targetStatus = isCancellationRequest ? 'cancelled' : 'approved';
+                                  setTimeout(() => onAction(rec.id, targetStatus, note), 0);
                               }}
                               disabled={isAnyProcessing}
-                              className="bg-primary hover:bg-primary/90 text-white border-none rounded-lg font-bold relative z-10 transition-transform active:scale-95"
+                              className={`${isCancellationRequest ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-100' : 'bg-primary hover:bg-primary/90'} text-white border-none rounded-lg font-bold relative z-10 transition-transform active:scale-95 h-10`}
                            >
-                              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : <><Check className="w-4 h-4 mr-1"/> Approve</>}
+                              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : <><Check className="w-4 h-4 mr-1"/> {isCancellationRequest ? 'Confirm Cancel' : 'Approve'}</>}
                            </Button>
                            <Button 
                               size="sm" 
@@ -178,17 +195,17 @@ const LeaveCardItem: React.FC<LeaveCardItemProps> = ({
                               onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  if (!note.trim()) {
+                                  if (!isCancellationRequest && !note.trim()) {
                                       alert("Please provide a reason for rejection.");
                                       return;
                                   }
-                                  // Defer state update to next tick
-                                  setTimeout(() => onAction(rec.id, 'rejected', note), 0);
+                                  const targetStatus = isCancellationRequest ? 'approved' : 'rejected';
+                                  setTimeout(() => onAction(rec.id, targetStatus, note), 0);
                               }}
                               disabled={isAnyProcessing}
-                              className="bg-white text-red-600 border border-red-200 hover:bg-red-50 rounded-lg font-bold relative z-10 transition-transform active:scale-95"
+                              className="bg-white text-red-600 border border-red-200 hover:bg-red-50 rounded-lg font-bold relative z-10 transition-transform active:scale-95 h-10"
                            >
-                              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : <><X className="w-4 h-4 mr-1"/> Reject</>}
+                              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : <><X className="w-4 h-4 mr-1"/> {isCancellationRequest ? 'Deny Cancel' : 'Reject'}</>}
                            </Button>
                        </div>
                    </div>
@@ -200,18 +217,16 @@ const LeaveCardItem: React.FC<LeaveCardItemProps> = ({
 
 const TeamDashboard: React.FC = () => {
   const { currentUser, setCompanySettings } = useStore();
-  const [activeTab, setActiveTab] = useState<'attendance' | 'breaks' | 'leaves' | 'location' | 'announcements'>('attendance');
+  const [activeTab, setActiveTab] = useState<'attendance' | 'breaks' | 'absences' | 'leaves' | 'location' | 'announcements'>('attendance');
   
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [breakRecords, setBreakRecords] = useState<BreakRecord[]>([]);
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   
-  // Location & Profile Settings State
   const [companySettings, setLocalSettings] = useState<CompanySettings | null>(null);
   const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
   
-  // Form Fields
   const [newRadius, setNewRadius] = useState<number>(300);
   const [newLocationName, setNewLocationName] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
@@ -222,11 +237,7 @@ const TeamDashboard: React.FC = () => {
   const [employees, setEmployees] = useState<Record<string, Employee>>({}); 
   const [loading, setLoading] = useState(true);
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
-  
-  // Admin Action State
   const [processingId, setProcessingId] = useState<string | null>(null);
-
-  // Announcement Form State
   const [announceMsg, setAnnounceMsg] = useState('');
   const [announceType, setAnnounceType] = useState<'info'|'urgent'|'success'>('info');
   const [isPostingAnnounce, setIsPostingAnnounce] = useState(false);
@@ -255,7 +266,6 @@ const TeamDashboard: React.FC = () => {
       setLocalSettings(settings);
       setAnnouncements(announce);
       
-      // Initialize form defaults
       if (settings) {
         setNewRadius(settings.radius);
         setNewLocationName(settings.locationName);
@@ -264,45 +274,36 @@ const TeamDashboard: React.FC = () => {
         setNewLat(settings.latitude);
         setNewLng(settings.longitude);
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   const getFilteredAttendance = () => attendanceRecords.filter(r => r.date === filterDate);
   const getFilteredBreaks = () => breakRecords.filter(r => r.date === filterDate);
-  const getFilteredLeaves = () => leaveRecords.filter(r => 
-    r.status === 'pending' || (r.dateFrom <= filterDate && r.dateTo >= filterDate)
-  );
+  const getAssignedLeaves = () => leaveRecords.filter(r => {
+    const isTargetedToMe = r.toWhom === currentUser?.name;
+    const isActionable = r.status === 'pending' || r.status === 'cancel_requested';
+    const isApprovedByMe = r.status === 'approved' && r.toWhom === currentUser?.name;
+    const isRejectedByMe = r.status === 'rejected' && r.toWhom === currentUser?.name;
+    return isTargetedToMe && (isActionable || isApprovedByMe || isRejectedByMe || r.status === 'cancelled');
+  });
 
-  // --- SETTINGS HANDLERS ---
+  const getAbsencesForDate = () => leaveRecords.filter(r => 
+    r.status === 'approved' && r.dateFrom <= filterDate && r.dateTo >= filterDate
+  );
 
   const handleSetCurrentLocation = () => {
       const isManagerOrLead = currentUser?.role === 'Manager' || currentUser?.role === 'Team Lead' || currentUser?.role === 'Admin';
       if (!isManagerOrLead) return;
-
-      if (!navigator.geolocation) {
-          alert("Geolocation is not supported by your browser");
-          return;
-      }
-      
+      if (!navigator.geolocation) { alert("Geolocation is not supported by your browser"); return; }
       setIsUpdatingLocation(true);
-      
       navigator.geolocation.getCurrentPosition(async (position) => {
           const { latitude, longitude } = position.coords;
-          
-          // Update inputs instead of saving immediately
           setNewLat(latitude);
           setNewLng(longitude);
           setIsUpdatingLocation(false);
           alert("GPS Coordinates captured! Review the details and click 'Save Config' to apply.");
-          
       }, (error) => {
           console.error(`Geo error: ${error.message}`);
           alert("Could not fetch location. Check permissions.");
@@ -322,11 +323,10 @@ const TeamDashboard: React.FC = () => {
               teamName: newTeamName,
               teamLogoUrl: newLogoUrl
           };
-
           await updateCompanySettings(updatedData);
           const updated = await getCompanySettings();
           setLocalSettings(updated);
-          setCompanySettings(updated); // Update Global Store
+          setCompanySettings(updated);
           alert("Settings saved successfully.");
       } catch (error) {
           console.error(error);
@@ -352,49 +352,29 @@ const TeamDashboard: React.FC = () => {
           const updated = await getCompanySettings();
           setLocalSettings(updated);
           setCompanySettings(updated);
-          
-          // Update form
           setNewLat(defaultSettings.latitude);
           setNewLng(defaultSettings.longitude);
           setNewRadius(300);
           setNewLocationName(defaultSettings.locationName);
-          
           alert("Location reset to default.");
-      } catch(e) {
-          console.error(e);
-      } finally {
-          setIsUpdatingLocation(false);
-      }
+      } catch(e) { console.error(e); } finally { setIsUpdatingLocation(false); }
   }
 
-  const handleLeaveAction = async (id: string, status: 'approved' | 'rejected', note?: string) => {
+  const handleLeaveAction = async (id: string, status: LeaveStatus, note?: string) => {
       if (!currentUser) return;
-      
       const record = leaveRecords.find(l => l.id === id);
       if (!record) return;
-
       const isAuthorized = record.toWhom === currentUser.name || currentUser.role === 'Admin';
-
-      if (!isAuthorized) {
-          alert(`You are not authorized. This request is assigned to: ${record.toWhom}`);
-          return;
-      }
-
+      if (!isAuthorized) { alert(`You are not authorized. This request is assigned to: ${record.toWhom}`); return; }
       setProcessingId(id);
-
       try {
           await updateLeaveStatus(id, status, note || '');
-          setLeaveRecords(prev => prev.map(l => 
-            l.id === id ? { ...l, status: status, adminResponse: note || '' } : l
-          ));
+          setLeaveRecords(prev => prev.map(l => l.id === id ? { ...l, status: status, adminResponse: note || '' } : l));
       } catch (e) {
           console.error("Failed to update status", e);
           alert("Failed to update leave status.");
-          const lvs = await getLeaves();
-          setLeaveRecords(lvs);
-      } finally {
-          setProcessingId(null);
-      }
+          const lvs = await getLeaves(); setLeaveRecords(lvs);
+      } finally { setProcessingId(null); }
   };
 
   const handlePostAnnouncement = async (e: React.FormEvent) => {
@@ -404,35 +384,19 @@ const TeamDashboard: React.FC = () => {
       try {
           await createAnnouncement(announceMsg, announceType, currentUser.name);
           setAnnounceMsg('');
-          const updated = await getAnnouncements();
-          setAnnouncements(updated);
-      } catch(e) {
-          console.error(e);
-      } finally {
-          setIsPostingAnnounce(false);
-      }
+          const updated = await getAnnouncements(); setAnnouncements(updated);
+      } catch(e) { console.error(e); } finally { setIsPostingAnnounce(false); }
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
-      try {
-          await deleteAnnouncement(id);
-          setAnnouncements(prev => prev.filter(a => a.id !== id));
-      } catch(e) {
-          console.error(e);
-      }
+      try { await deleteAnnouncement(id); setAnnouncements(prev => prev.filter(a => a.id !== id)); } catch(e) { console.error(e); }
   };
 
   const downloadCSV = () => {
     const records = getFilteredAttendance();
-    if (records.length === 0) {
-        alert("No records to export for this date.");
-        return;
-    }
-
+    if (records.length === 0) { alert("No records to export for this date."); return; }
     const headers = ["Employee Name", "Date", "Punch In", "Punch Out", "Duration (Minutes)", "Work Log", "Status"];
-    
     const csvRows = [headers.join(',')];
-
     records.forEach(rec => {
         const emp = employees[rec.employeeId];
         const name = emp ? emp.name : 'Unknown';
@@ -442,23 +406,12 @@ const TeamDashboard: React.FC = () => {
         const duration = rec.workingHours || 0;
         const workLog = rec.workLog ? `"${rec.workLog.replace(/"/g, '""')}"` : '';
         const status = (rec.punchIn && !rec.punchOut) ? 'Working' : 'Completed';
-
-        const row = [
-            `"${name}"`,
-            date,
-            punchIn,
-            punchOut,
-            duration,
-            workLog,
-            status
-        ];
+        const row = [`"${name}"`, date, punchIn, punchOut, duration, workLog, status];
         csvRows.push(row.join(','));
     });
-
     const csvString = csvRows.join('\n');
     const blob = new Blob([csvString], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
-    
     const a = document.createElement('a');
     a.href = url;
     a.download = `attendance_report_${filterDate}.csv`;
@@ -467,21 +420,13 @@ const TeamDashboard: React.FC = () => {
   };
 
   const handleDateClick = (e: React.MouseEvent) => {
-    // If the user clicked the actual input, let native behavior handle it
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
-    
-    // Otherwise (clicked icon or padding), trigger picker manually
-    try {
-        dateInputRef.current?.showPicker();
-    } catch (err) {
-        // Fallback or ignore if not supported
-    }
+    try { dateInputRef.current?.showPicker(); } catch (err) {}
   };
 
   const renderAttendanceCards = () => {
     const records = getFilteredAttendance();
     const isToday = filterDate === new Date().toISOString().split('T')[0];
-
     if (records.length === 0 && !isToday) {
       return (
         <div className="text-center py-20 bg-white/50 rounded-3xl border border-dashed border-slate-300">
@@ -491,7 +436,6 @@ const TeamDashboard: React.FC = () => {
         </div>
       );
     }
-
     return (
       <div className="space-y-6">
         {records.length === 0 ? (
@@ -504,8 +448,6 @@ const TeamDashboard: React.FC = () => {
                 const designation = emp ? emp.designation : '';
                 const isWorking = rec.punchIn && !rec.punchOut;
                 const duration = rec.workingHours ? `${Math.floor(rec.workingHours / 60)}h ${rec.workingHours % 60}m` : '0h 0m';
-                const dateStr = new Date(rec.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-
                 return (
                     <Card key={rec.id} className="overflow-hidden border-slate-200 hover:shadow-lg transition-all duration-300 group bg-white/80 backdrop-blur-md">
                         <div className={`h-1.5 w-full ${isWorking ? 'bg-emerald-500' : 'bg-slate-300'}`} />
@@ -527,7 +469,6 @@ const TeamDashboard: React.FC = () => {
                                     </span>
                                 )}
                             </div>
-
                             <div className="flex items-center divide-x divide-slate-100 border-y border-slate-100 py-4 mb-4 bg-slate-50/50 rounded-xl">
                                 <div className="flex-1 px-2 text-center">
                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">In</div>
@@ -542,36 +483,15 @@ const TeamDashboard: React.FC = () => {
                                     <div className={`font-mono font-bold ${isWorking ? 'text-emerald-600' : 'text-slate-700'}`}>{duration}</div>
                                 </div>
                             </div>
-
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between text-xs">
-                                    <span className="text-slate-400 font-medium flex items-center gap-1.5 uppercase tracking-wide text-[10px]">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div> 
-                                        Punch In
-                                    </span>
+                                    <span className="text-slate-400 font-medium flex items-center gap-1.5 uppercase tracking-wide text-[10px]">Punch In</span>
                                     {rec.punchInLocation ? <LocationIcon loc={rec.punchInLocation} companySettings={companySettings} /> : <span className="text-slate-300">-</span>}
                                 </div>
                                 {rec.punchOut && (
                                     <div className="flex items-center justify-between text-xs">
-                                        <span className="text-slate-400 font-medium flex items-center gap-1.5 uppercase tracking-wide text-[10px]">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-red-400"></div> 
-                                            Punch Out
-                                        </span>
+                                        <span className="text-slate-400 font-medium flex items-center gap-1.5 uppercase tracking-wide text-[10px]">Punch Out</span>
                                         {rec.punchOutLocation ? <LocationIcon loc={rec.punchOutLocation} companySettings={companySettings} /> : <span className="text-slate-300">-</span>}
-                                    </div>
-                                )}
-                            </div>
-                            
-                            <div className="mt-5 pt-3 border-t border-slate-50 flex justify-between items-center">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{dateStr}</span>
-                                </div>
-                                {rec.workLog && (
-                                    <div className="group/log relative">
-                                        <FileText className="w-4 h-4 text-slate-300 hover:text-emerald-500 cursor-help transition-colors" />
-                                        <div className="absolute bottom-full right-0 mb-2 w-48 p-2 bg-slate-800 text-white text-xs rounded-lg opacity-0 group-hover/log:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
-                                            <p className="line-clamp-3 italic">"{rec.workLog}"</p>
-                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -596,49 +516,24 @@ const TeamDashboard: React.FC = () => {
           </div>
         );
     }
-
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
          {records.map(rec => {
             const emp = employees[rec.employeeId];
             const name = emp ? emp.name : 'Unknown';
             const isActive = !rec.breakEnd;
-            const isLunch = rec.breakType === 'lunch';
-
             return (
-               <div key={rec.id} className={`relative overflow-hidden bg-white/70 backdrop-blur-md border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all ${isActive ? 'border-amber-300 ring-1 ring-amber-100' : 'border-white/50'}`}>
+               <div key={rec.id} className={`bg-white/70 backdrop-blur-md border rounded-2xl p-4 shadow-sm ${isActive ? 'border-amber-300 ring-1 ring-amber-100' : 'border-white/50'}`}>
                   <div className="flex justify-between items-start mb-4">
-                     <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-10 w-10 rounded-full bg-white border border-slate-100 shadow-sm flex items-center justify-center text-slate-700 font-bold flex-shrink-0">
-                            {name.charAt(0)}
-                        </div>
-                        <div className="min-w-0">
-                           <h4 className="font-bold text-slate-800 text-sm truncate">{name}</h4>
-                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${isLunch ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                              {isLunch ? <Utensils className="w-3 h-3 mr-1 flex-shrink-0"/> : <Coffee className="w-3 h-3 mr-1 flex-shrink-0"/>}
-                              {rec.breakType}
-                           </span>
+                     <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-700 font-bold">{name.charAt(0)}</div>
+                        <div>
+                           <h4 className="font-bold text-slate-800 text-sm">{name}</h4>
+                           <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-blue-100 text-blue-700">{rec.breakType}</span>
                         </div>
                      </div>
-                     {isActive && <span className="flex h-3 w-3 relative flex-shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span></span>}
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 bg-slate-50/50 rounded-xl p-2 border border-slate-100/50">
-                     <div>
-                        <span className="text-[10px] text-slate-400 font-bold uppercase block">Started</span>
-                        <p className="font-mono text-sm font-semibold text-slate-700">
-                           {new Date(rec.breakStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                     </div>
-                     <div className="text-right">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase block">Ended</span>
-                        <p className="font-mono text-sm font-semibold text-slate-700">
-                           {rec.breakEnd ? new Date(rec.breakEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}
-                        </p>
-                     </div>
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between">
+                  <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-slate-500">Duration</span>
                       <span className={`font-bold ${isActive ? 'text-amber-600 animate-pulse' : 'text-slate-800'}`}>
                          {rec.duration ? `${rec.duration} mins` : 'Ongoing...'}
@@ -651,16 +546,42 @@ const TeamDashboard: React.FC = () => {
     );
   };
 
+  const renderAbsences = () => {
+    const records = getAbsencesForDate();
+    if (records.length === 0) {
+        return (
+          <div className="text-center py-20 bg-white/50 rounded-3xl border border-dashed border-slate-300">
+             <UserMinus className="h-12 w-12 mx-auto mb-3 text-slate-300" />
+             <p className="text-lg font-bold text-slate-500">Full Attendance</p>
+             <p className="text-sm text-slate-400">No employees are on leave today.</p>
+          </div>
+        );
+    }
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+         {records.map(rec => {
+            const emp = employees[rec.employeeId];
+            const name = emp ? emp.name : 'Unknown';
+            return (
+               <div key={rec.id} className="bg-white/90 backdrop-blur-sm border border-slate-100 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center font-bold text-primary text-xl">{name.charAt(0)}</div>
+                  <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-slate-900 truncate">{name}</h4>
+                      <p className="text-xs text-slate-500 font-medium">
+                          {rec.isHalfDay ? `Half Day (${rec.halfDayType})` : 'Full Day'}
+                      </p>
+                  </div>
+                  <div className="bg-green-50 px-2 py-1 rounded text-[10px] font-bold text-green-700 uppercase">On Leave</div>
+               </div>
+            );
+         })}
+      </div>
+    );
+  };
+
   const renderLocationSettings = () => {
       if (!companySettings) return null;
       const isManagerOrLead = currentUser?.role === 'Manager' || currentUser?.role === 'Team Lead' || currentUser?.role === 'Admin';
-
-      let lastUpdatedDate = 'N/A';
-      try {
-          if (companySettings.updatedAt) {
-              lastUpdatedDate = new Date(companySettings.updatedAt).toLocaleDateString();
-          }
-      } catch (e) {}
 
       return (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -692,7 +613,7 @@ const TeamDashboard: React.FC = () => {
                               </div>
                               <div>
                                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Last Updated</p>
-                                  <p className="font-bold text-slate-700">{lastUpdatedDate}</p>
+                                  <p className="font-bold text-slate-700">{companySettings.updatedAt ? new Date(companySettings.updatedAt).toLocaleDateString() : 'N/A'}</p>
                               </div>
                           </div>
                       </div>
@@ -707,7 +628,7 @@ const TeamDashboard: React.FC = () => {
                               marginWidth={0} 
                               title="Google Maps Preview"
                               src={`https://maps.google.com/maps?q=${companySettings.latitude},${companySettings.longitude}&z=15&output=embed`}
-                              className="w-full h-full border-0 filter grayscale-[0] hover:grayscale-0 transition-all duration-500"
+                              className="w-full h-full border-0 transition-all duration-500"
                           ></iframe>
                       </div>
 
@@ -720,7 +641,6 @@ const TeamDashboard: React.FC = () => {
                           >
                               <Globe className="w-3 h-3 mr-1" /> View on Google Maps
                           </a>
-                          <p className="text-[10px] text-slate-400 mt-1">This map preview shows the center point of your office geofence.</p>
                       </div>
                   </CardContent>
               </Card>
@@ -737,16 +657,14 @@ const TeamDashboard: React.FC = () => {
                           
                           <div className="space-y-2">
                               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Office Name</label>
-                              <div className="relative">
-                                  <input 
-                                      type="text" 
-                                      value={newLocationName}
-                                      onChange={(e) => setNewLocationName(e.target.value)}
-                                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                                      placeholder="e.g. Aeologic Technologies Logix Cyber Park"
-                                      disabled={!isManagerOrLead}
-                                  />
-                              </div>
+                              <input 
+                                  type="text" 
+                                  value={newLocationName}
+                                  onChange={(e) => setNewLocationName(e.target.value)}
+                                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                                  placeholder="e.g. Aeologic Technologies Logix Cyber Park"
+                                  disabled={!isManagerOrLead}
+                              />
                           </div>
 
                           <div className="grid grid-cols-2 gap-4">
@@ -794,22 +712,20 @@ const TeamDashboard: React.FC = () => {
                                       {newRadius}m
                                   </span>
                               </div>
-                              <p className="text-[10px] text-slate-400">Typical office radius is 100-300 meters.</p>
                           </div>
 
                           <div className="mt-auto space-y-4 pt-6">
                               <Button 
                                   onClick={handleSetCurrentLocation}
                                   disabled={isUpdatingLocation || !isManagerOrLead}
-                                  className={`w-full py-6 rounded-xl font-bold flex items-center justify-center text-sm transition-transform active:scale-95 shadow-lg
+                                  className={`w-full py-6 rounded-xl font-bold flex items-center justify-center text-sm transition-transform active:scale-95 shadow-lg h-14
                                       ${!isManagerOrLead 
-                                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none border border-slate-200' 
-                                          : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-100'}`}
+                                          ? 'bg-slate-100 text-slate-400 shadow-none border border-slate-200' 
+                                          : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-100 border-none'}`}
                               >
                                   {isUpdatingLocation ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Crosshair className="w-5 h-5 mr-2" />}
                                   {isManagerOrLead ? 'Use My Current GPS Position' : 'Restricted to Admin/Manager'}
                               </Button>
-                              {isManagerOrLead && <p className="text-center text-[10px] text-slate-400">*Stand at the office center before clicking this.</p>}
 
                               {isManagerOrLead && (
                                   <>
@@ -825,7 +741,6 @@ const TeamDashboard: React.FC = () => {
                                               disabled={isUpdatingLocation}
                                               variant="secondary"
                                               className="bg-white text-slate-500 border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-100 h-14 rounded-xl font-bold"
-                                              title="Reset to Defaults"
                                           >
                                               <RotateCcw className="w-4 h-4 mr-2" /> Reset
                                           </Button>
@@ -847,7 +762,7 @@ const TeamDashboard: React.FC = () => {
                       {!isManagerOrLead && (
                           <div className="mt-4 p-3 bg-slate-50 text-slate-500 text-xs font-medium rounded-lg text-center border border-slate-100">
                               <Lock className="w-3 h-3 inline mr-1 mb-0.5" />
-                              Location settings are read-only for team members. Contact an admin to update the office geofence.
+                              Location settings are read-only for team members.
                           </div>
                       )}
                   </CardContent>
@@ -857,12 +772,12 @@ const TeamDashboard: React.FC = () => {
   };
 
   const renderLeavesCards = () => {
-    const records = getFilteredLeaves();
-    
-    // Sort: Pending first, then by date desc
+    const records = getAssignedLeaves();
     const sortedRecords = [...records].sort((a, b) => {
-        if (a.status === 'pending' && b.status !== 'pending') return -1;
-        if (a.status !== 'pending' && b.status === 'pending') return 1;
+        const isAActionable = a.status === 'pending' || a.status === 'cancel_requested';
+        const isBActionable = b.status === 'pending' || b.status === 'cancel_requested';
+        if (isAActionable && !isBActionable) return -1;
+        if (!isAActionable && isBActionable) return 1;
         return new Date(b.dateFrom).getTime() - new Date(a.dateFrom).getTime();
     });
 
@@ -870,28 +785,17 @@ const TeamDashboard: React.FC = () => {
         return (
           <div className="text-center py-20 bg-white/50 rounded-3xl border border-dashed border-slate-300">
              <CalendarOff className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-             <p className="text-lg font-bold text-slate-500">No leave requests</p>
-             <p className="text-sm text-slate-400">Everything looks clear for this period.</p>
+             <p className="text-lg font-bold text-slate-500">No leaves assigned to you</p>
+             <p className="text-sm text-slate-400">Only leave requests specifically sent to you appear here.</p>
           </div>
         );
     }
-
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {sortedRecords.map(rec => {
-              const isAssignedManager = rec.toWhom === currentUser?.name;
-              const isAdmin = currentUser?.role === 'Admin';
-              const showActions = rec.status === 'pending' && (isAssignedManager || isAdmin);
-
+              const showActions = (rec.status === 'pending' || rec.status === 'cancel_requested');
               return (
-                  <LeaveCardItem 
-                      key={rec.id}
-                      rec={rec}
-                      showActions={showActions}
-                      employees={employees}
-                      processingId={processingId}
-                      onAction={handleLeaveAction}
-                  />
+                  <LeaveCardItem key={rec.id} rec={rec} showActions={showActions} employees={employees} processingId={processingId} onAction={handleLeaveAction} />
               );
           })}
       </div>
@@ -900,107 +804,41 @@ const TeamDashboard: React.FC = () => {
 
   const renderAnnouncements = () => {
       const canManageAnnouncements = currentUser?.role === 'Admin' || currentUser?.role === 'Manager';
-
       return (
           <div className="space-y-8">
-              {/* Creation Form */}
               {canManageAnnouncements && (
                   <Card className="border-primary/20 bg-white shadow-md">
-                      <CardHeader>
-                          <CardTitle className="flex items-center gap-2 text-primary">
-                              <Megaphone className="w-5 h-5 text-primary" /> Post Announcement
-                          </CardTitle>
-                      </CardHeader>
+                      <CardHeader><CardTitle className="flex items-center gap-2 text-primary"><Megaphone className="w-5 h-5" /> Post Notice</CardTitle></CardHeader>
                       <CardContent>
                           <form onSubmit={handlePostAnnouncement} className="flex flex-col gap-4">
-                              <textarea 
-                                  required
-                                  value={announceMsg}
-                                  onChange={(e) => setAnnounceMsg(e.target.value)}
-                                  placeholder="Write your message here..."
-                                  style={{ colorScheme: 'light' }}
-                                  className="w-full p-4 rounded-xl border border-slate-200 bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none min-h-[100px] resize-none text-sm font-medium text-slate-900 placeholder:text-slate-400 transition-all shadow-inner"
-                              />
+                              <textarea required value={announceMsg} onChange={(e) => setAnnounceMsg(e.target.value)} placeholder="Write your message here..." className="w-full p-4 rounded-xl border border-slate-200 bg-white min-h-[100px] outline-none focus:ring-4 focus:ring-primary/10" />
                               <div className="flex justify-between items-center">
                                   <div className="flex gap-2">
                                       {['info', 'urgent', 'success'].map((type) => (
-                                          <button
-                                              key={type}
-                                              type="button"
-                                              onClick={() => setAnnounceType(type as any)}
-                                              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide border transition-all ${
-                                                  announceType === type 
-                                                  ? type === 'urgent' ? 'bg-red-500 text-white border-red-600' 
-                                                  : type === 'success' ? 'bg-green-500 text-white border-green-600'
-                                                  : 'bg-primary text-white border-primary'
-                                                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                                              }`}
-                                          >
-                                              {type}
-                                          </button>
+                                          <button key={type} type="button" onClick={() => setAnnounceType(type as any)} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase border transition-all ${announceType === type ? 'bg-primary text-white border-primary' : 'bg-white text-slate-500 border-slate-200'}`}>{type}</button>
                                       ))}
                                   </div>
-                                  <Button 
-                                      type="submit" 
-                                      disabled={isPostingAnnounce}
-                                      className="bg-gradient-to-r from-primary to-primary/80 hover:to-primary text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-primary/20"
-                                  >
-                                      {isPostingAnnounce ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post Notice'}
-                                  </Button>
+                                  <Button type="submit" disabled={isPostingAnnounce} className="bg-primary text-white font-bold px-6 rounded-xl h-11 border-none">{isPostingAnnounce ? 'Posting...' : 'Post Notice'}</Button>
                               </div>
                           </form>
                       </CardContent>
                   </Card>
               )}
-
-              {/* List */}
               <div className="grid gap-4">
-                  {announcements.length === 0 ? (
-                      <div className="text-center py-12 text-slate-400">
-                          <Bell className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                          <p>No announcements posted yet.</p>
-                      </div>
-                  ) : (
-                      announcements.map(ann => (
-                          <div key={ann.id} className={`relative p-5 rounded-2xl border flex items-start gap-4 shadow-sm transition-all hover:shadow-md ${
-                               ann.type === 'urgent' ? 'bg-red-50/50 border-red-100' : 
-                               ann.type === 'success' ? 'bg-green-50/50 border-green-100' : 
-                               'bg-white border-slate-100'
-                          }`}>
-                              <div className={`p-3 rounded-xl flex-shrink-0 ${
-                                   ann.type === 'urgent' ? 'bg-red-100 text-red-600' : 
-                                   ann.type === 'success' ? 'bg-green-100 text-green-600' : 
-                                   'bg-primary/10 text-primary'
-                              }`}>
-                                  <Megaphone className="w-5 h-5" />
+                  {announcements.map(ann => (
+                      <div key={ann.id} className="relative p-5 rounded-2xl border bg-white flex items-start gap-4 shadow-sm">
+                          <div className="p-3 rounded-xl bg-primary/10 text-primary"><Megaphone className="w-5 h-5" /></div>
+                          <div className="flex-1 min-w-0 pt-1">
+                              <p className="text-slate-800 font-medium">{ann.message}</p>
+                              <div className="flex items-center gap-2 mt-3 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                  <span>{new Date(ann.createdAt).toLocaleDateString()}</span>
+                                  <span>•</span>
+                                  <span>{ann.createdBy}</span>
                               </div>
-                              
-                              <div className="flex-1 min-w-0 pt-1">
-                                  <p className="text-slate-800 font-medium leading-relaxed">{ann.message}</p>
-                                  <div className="flex items-center gap-2 mt-3 text-xs text-slate-400 font-bold uppercase tracking-wider">
-                                      <span>{new Date(ann.createdAt).toLocaleDateString()}</span>
-                                      <span>•</span>
-                                      <span>{ann.createdBy}</span>
-                                      {ann.type !== 'info' && (
-                                          <span className={`ml-2 px-2 py-0.5 rounded-md text-[10px] ${
-                                              ann.type === 'urgent' ? 'bg-red-200 text-red-800' : 'bg-green-200 text-green-800'
-                                          }`}>{ann.type}</span>
-                                      )}
-                                  </div>
-                              </div>
-
-                              {canManageAnnouncements && (
-                                  <button 
-                                      onClick={() => handleDeleteAnnouncement(ann.id)}
-                                      className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors absolute top-4 right-4"
-                                      title="Delete Announcement"
-                                  >
-                                      <Trash2 className="w-4 h-4" />
-                                  </button>
-                              )}
                           </div>
-                      ))
-                  )}
+                          {canManageAnnouncements && <button onClick={() => handleDeleteAnnouncement(ann.id)} className="p-2 text-slate-300 hover:text-red-500 absolute top-4 right-4"><Trash2 className="w-4 h-4" /></button>}
+                      </div>
+                  ))}
               </div>
           </div>
       );
@@ -1010,62 +848,37 @@ const TeamDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-20 md:pb-0">
-      {/* Header Section */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-900">
-            {currentUser?.role === 'Manager' || currentUser?.role === 'Team Lead' || currentUser?.role === 'Admin' ? 'Admin Dashboard' : 'Team Insights'}
-          </h2>
-          <p className="text-slate-500 mt-1">Manage attendance, leave requests, and company settings.</p>
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900">Team Insights</h2>
+          <p className="text-slate-500 mt-1">Manage team attendance and your assigned leave requests.</p>
         </div>
-        
         <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
-            {/* Date Filter */}
             {activeTab !== 'location' && activeTab !== 'announcements' && (
             <div className="w-full sm:w-auto min-w-full sm:min-w-[260px]">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Filter by Date</label>
                 <div className="relative group cursor-pointer" onClick={handleDateClick}>
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-20">
-                    <Filter className="h-4 w-4 text-primary" />
-                </div>
-                
-                <input 
-                    ref={dateInputRef}
-                    type="date" 
-                    className="full-click-date block w-full pl-10 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 shadow-sm 
-                            focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary 
-                            cursor-pointer appearance-none relative z-10 hover:border-primary/50 transition-colors"
-                    value={filterDate}
-                    onChange={(e) => setFilterDate(e.target.value)}
-                />
-                
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none z-20">
-                    <Calendar className="h-5 w-5 text-slate-400 group-hover:text-primary transition-colors" />
-                </div>
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-20"><Filter className="h-4 w-4 text-primary" /></div>
+                  <input ref={dateInputRef} type="date" className="full-click-date block w-full pl-10 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 shadow-sm outline-none cursor-pointer" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none z-20"><Calendar className="h-5 w-5 text-slate-400" /></div>
                 </div>
             </div>
             )}
-
-            {/* Export CSV Button */}
             {activeTab === 'attendance' && (
-                <div className="w-full sm:w-auto">
-                    <label className="hidden sm:block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">&nbsp;</label>
-                    <Button 
-                        onClick={downloadCSV}
-                        className="w-full bg-slate-800 text-white hover:bg-primary py-3 rounded-xl shadow-md flex items-center justify-center gap-2 h-[46px]"
-                    >
-                        <Download className="w-4 h-4" /> Export CSV
-                    </Button>
+                <div className="w-full sm:w-auto self-end">
+                    <Button onClick={downloadCSV} className="w-full bg-slate-800 text-white hover:bg-primary py-3 rounded-xl shadow-md flex items-center justify-center gap-2 h-[46px] border-none"><Download className="w-4 h-4" /> Export CSV</Button>
                 </div>
             )}
         </div>
       </div>
 
-      {/* Navigation Tabs - Scrollable on mobile */}
       <div className="flex gap-3 overflow-x-auto pb-2 lg:pb-0 hide-scrollbar -mx-4 px-4 md:mx-0 md:px-0 snap-x">
         <TabButton id="attendance" label="Attendance" icon={Clock} activeTab={activeTab} setActiveTab={setActiveTab} />
         <TabButton id="breaks" label="Breaks" icon={Coffee} activeTab={activeTab} setActiveTab={setActiveTab} />
-        <TabButton id="leaves" label="Leaves" icon={CalendarOff} activeTab={activeTab} setActiveTab={setActiveTab} />
+        <TabButton id="absences" label="Who's Out?" icon={UserMinus} activeTab={activeTab} setActiveTab={setActiveTab} />
+        {(currentUser?.role === 'Manager' || currentUser?.role === 'Team Lead' || currentUser?.role === 'Admin') && (
+            <TabButton id="leaves" label="Manage Leaves" icon={CalendarOff} activeTab={activeTab} setActiveTab={setActiveTab} />
+        )}
         {(currentUser?.role === 'Manager' || currentUser?.role === 'Team Lead' || currentUser?.role === 'Admin') && <TabButton id="announcements" label="Notice Board" icon={Megaphone} activeTab={activeTab} setActiveTab={setActiveTab} />}
         <TabButton id="location" label="Office Zone" icon={MapIcon} activeTab={activeTab} setActiveTab={setActiveTab} />
       </div>
@@ -1073,6 +886,7 @@ const TeamDashboard: React.FC = () => {
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
          {activeTab === 'attendance' && renderAttendanceCards()}
          {activeTab === 'breaks' && renderBreaksCards()}
+         {activeTab === 'absences' && renderAbsences()}
          {activeTab === 'leaves' && renderLeavesCards()}
          {activeTab === 'announcements' && renderAnnouncements()}
          {activeTab === 'location' && renderLocationSettings()}

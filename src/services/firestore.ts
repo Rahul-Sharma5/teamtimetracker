@@ -35,25 +35,38 @@ const getTodayDateString = () => new Date().toISOString().split('T')[0];
 
 // --- Employees ---
 
-export const seedEmployees = async () => {
-  return false;
-};
-
 export const getEmployees = async (): Promise<Employee[]> => {
   const q = query(collection(db, EMPLOYEES_COL));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as Employee));
 };
 
-export const createEmployee = async (employeeData: Omit<Employee, 'id'>): Promise<void> => {
-  await addDoc(collection(db, EMPLOYEES_COL), employeeData);
+export const getEmployeeByPhone = async (phone: string): Promise<Employee | null> => {
+  const q = query(collection(db, EMPLOYEES_COL), where('phone', '==', phone.trim()));
+  const snapshot = await getDocs(q);
+  if (!snapshot.empty) {
+    return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() as any } as Employee;
+  }
+  return null;
+};
+
+export const getEmployeeByEmail = async (email: string): Promise<Employee | null> => {
+  const q = query(collection(db, EMPLOYEES_COL), where('email', '==', email.toLowerCase().trim()));
+  const snapshot = await getDocs(q);
+  if (!snapshot.empty) {
+    return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() as any } as Employee;
+  }
+  return null;
+};
+
+export const createEmployee = async (employeeData: Omit<Employee, 'id'>): Promise<string> => {
+  const docRef = await addDoc(collection(db, EMPLOYEES_COL), employeeData);
+  return docRef.id;
 };
 
 export const deleteEmployee = async (id: string): Promise<void> => {
   try {
-    console.log(`Firestore: Deleting document ${id} from ${EMPLOYEES_COL}`);
     await deleteDoc(doc(db, EMPLOYEES_COL, id));
-    console.log(`Firestore: Document ${id} deleted successfully.`);
   } catch (error) {
     console.error("Firestore: Error deleting employee document:", error);
     throw error;
@@ -95,7 +108,6 @@ export const getAttendanceByDate = async (employeeId: string, date: string): Pro
 };
 
 export const getAttendanceHistory = async (employeeId: string, limitCount: number = 5): Promise<AttendanceRecord[]> => {
-  // Use simple query and sort client-side to avoid index requirement
   const q = query(
     collection(db, ATTENDANCE_COL),
     where('employeeId', '==', employeeId)
@@ -103,15 +115,10 @@ export const getAttendanceHistory = async (employeeId: string, limitCount: numbe
   
   const snapshot = await getDocs(q);
   const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as AttendanceRecord));
-
-  // Sort descending by date
   records.sort((a, b) => b.date.localeCompare(a.date));
-
-  // Return top N
   return records.slice(0, limitCount);
 };
 
-// New: Fetch last 14 records to allow computing weekly stats on client
 export const getWeeklyAttendance = async (employeeId: string): Promise<AttendanceRecord[]> => {
     return getAttendanceHistory(employeeId, 14);
 };
@@ -133,7 +140,6 @@ export const punchIn = async (employeeId: string, location?: LocationData, mood?
     workingHours: 0,
     workLog: '',
     mood: mood || 'neutral',
-    // Spread operator ensures we don't add undefined keys
     ...(location ? { punchInLocation: location } : {})
   };
 
@@ -163,11 +169,9 @@ export const updateWorkLog = async (recordId: string, workLog: string): Promise<
 };
 
 export const getAllAttendance = async (): Promise<AttendanceRecord[]> => {
-  // Client-side sort to avoid index errors
   const q = query(collection(db, ATTENDANCE_COL));
   const snapshot = await getDocs(q);
   const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as AttendanceRecord));
-  
   return records.sort((a, b) => b.date.localeCompare(a.date));
 };
 
@@ -185,11 +189,9 @@ export const getTodayBreaks = async (employeeId: string): Promise<BreakRecord[]>
 };
 
 export const getAllBreaks = async (): Promise<BreakRecord[]> => {
-  // Client-side sort to avoid index errors
   const q = query(collection(db, BREAKS_COL));
   const snapshot = await getDocs(q);
   const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as BreakRecord));
-  
   return records.sort((a, b) => b.date.localeCompare(a.date));
 };
 
@@ -230,7 +232,7 @@ export const applyLeave = async (
   toWhom: string,
   isHalfDay: boolean = false,
   halfDayType?: 'first' | 'second',
-  approverId?: string // New optional parameter for targeted notifications
+  approverId?: string
 ): Promise<void> => {
   const record = {
     employeeId,
@@ -238,7 +240,7 @@ export const applyLeave = async (
     dateTo: isHalfDay ? dateFrom : dateTo,
     reason,
     toWhom,
-    status: 'pending',
+    status: 'pending' as LeaveStatus,
     appliedOn: new Date().toISOString(),
     isHalfDay: !!isHalfDay,
     ...(isHalfDay && halfDayType ? { halfDayType } : {})
@@ -246,11 +248,8 @@ export const applyLeave = async (
 
   await addDoc(collection(db, LEAVES_COL), record);
 
-  // NOTIFICATION TRIGGER: Alert ONLY the specific Approver (Manager/Admin)
   try {
       let targetId = approverId;
-
-      // Fallback: If no approverId passed, try to find ID by name
       if (!targetId) {
           const allEmployees = await getEmployees();
           const target = allEmployees.find(e => e.name === toWhom);
@@ -264,37 +263,67 @@ export const applyLeave = async (
               type: 'info',
               read: false,
               createdAt: new Date().toISOString(),
-              link: '/team' // Managers approve in the Team Dashboard
+              link: '/team'
           });
-      } else {
-          console.warn(`Notification skipped: Could not resolve ID for approver '${toWhom}'`);
       }
   } catch (err) {
       console.error("Failed to send notifications", err);
   }
 };
 
-export const updateLeaveStatus = async (leaveId: string, status: LeaveStatus, adminResponse?: string): Promise<void> => {
+export const requestLeaveCancellation = async (leaveId: string, requesterName: string): Promise<void> => {
   const recordRef = doc(db, LEAVES_COL, leaveId);
-  
-  // Fetch the leave first to know who to notify
   const leaveSnap = await getDoc(recordRef);
   
+  if (!leaveSnap.exists()) return;
+  const leaveData = leaveSnap.data() as LeaveRecord;
+
+  // Update status to cancel_requested
+  await updateDoc(recordRef, { status: 'cancel_requested' });
+
+  // Find the original approver ID
+  try {
+      const allEmployees = await getEmployees();
+      // Rule: The request goes to the person it was originally sent to (Manager/Admin)
+      const target = allEmployees.find(e => e.name === leaveData.toWhom);
+      
+      if (target) {
+          await addDoc(collection(db, NOTIFICATIONS_COL), {
+              recipientId: target.id,
+              message: `${requesterName} has requested to CANCEL their leave for ${leaveData.dateFrom}`,
+              type: 'warning',
+              read: false,
+              createdAt: new Date().toISOString(),
+              link: '/team'
+          });
+      }
+  } catch (err) {
+      console.error("Failed to send cancellation request notification", err);
+  }
+};
+
+export const updateLeaveStatus = async (leaveId: string, status: LeaveStatus, adminResponse?: string): Promise<void> => {
+  const recordRef = doc(db, LEAVES_COL, leaveId);
+  const leaveSnap = await getDoc(recordRef);
   const updates: any = { status };
   if (adminResponse !== undefined) {
     updates.adminResponse = adminResponse;
   }
   await updateDoc(recordRef, updates);
 
-  // NOTIFICATION TRIGGER: Alert the Employee (Sender of the original request)
   if (leaveSnap.exists()) {
       const leaveData = leaveSnap.data() as LeaveRecord;
-      const type = status === 'approved' ? 'success' : status === 'rejected' ? 'error' : 'info';
+      const type = status === 'approved' ? 'success' : status === 'rejected' ? 'error' : status === 'cancelled' ? 'info' : 'info';
       
+      // Map readable labels for notifications
+      let statusLabel = status.toUpperCase();
+      if (status === 'cancel_requested') statusLabel = 'CANCELLATION PENDING';
+      if (status === 'cancelled') statusLabel = 'CANCELLED';
+
       try {
           await addDoc(collection(db, NOTIFICATIONS_COL), {
               recipientId: leaveData.employeeId,
-              message: `Your leave request for ${leaveData.dateFrom} has been ${status.toUpperCase()}.`,
+              message: `Your leave request for ${leaveData.dateFrom} has been ${statusLabel}.`,
               type: type,
               read: false,
               createdAt: new Date().toISOString(),
@@ -311,7 +340,7 @@ export const getLeaves = async (employeeId?: string): Promise<LeaveRecord[]> => 
   if (employeeId) {
     q = query(collection(db, LEAVES_COL), where('employeeId', '==', employeeId));
   } else {
-    q = query(collection(db, LEAVES_COL)); // For admin/team view
+    q = query(collection(db, LEAVES_COL));
   }
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as LeaveRecord));
@@ -327,7 +356,6 @@ export const subscribeToNotifications = (userId: string, callback: (notification
 
     return onSnapshot(q, (snapshot) => {
         const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as Notification));
-        // Client side sort
         notifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         callback(notifs);
     }, (error) => {
@@ -406,7 +434,6 @@ export const createTask = async (task: Omit<Task, 'id' | 'status' | 'assignedDat
 
   await addDoc(collection(db, TASKS_COL), newTask);
 
-  // Send Notification to Assignee
   try {
     const dueInfo = task.dueDate ? ` Due: ${task.dueDate}.` : '';
     await addDoc(collection(db, NOTIFICATIONS_COL), {

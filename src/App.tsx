@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useStore } from './store/useStore';
-import SelectEmployee from './pages/SelectEmployee';
+import Auth from './pages/Auth';
 import { Layout } from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Breaks from './pages/Breaks';
@@ -33,8 +33,6 @@ const App: React.FC = () => {
     // Set CSS Variables dynamically
     root.style.setProperty('--primary', selectedTheme.primary);
     root.style.setProperty('--ring', selectedTheme.ring);
-    
-    // Also update primary-foreground if needed, but white usually works for these dark primary colors
     root.style.setProperty('--primary-foreground', '210 40% 98%');
     
   }, [themeColor]);
@@ -42,7 +40,8 @@ const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<SelectEmployee />} />
+        {/* Main Landing Page (Login/Signup/Forgot) */}
+        <Route path="/" element={<Auth />} />
         
         <Route element={<Layout />}>
           <Route path="/dashboard" element={<Dashboard />} />

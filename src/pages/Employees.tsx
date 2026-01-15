@@ -78,6 +78,11 @@ const Employees: React.FC = () => {
         return;
     }
 
+    if (newName.trim() === '') {
+        alert("Please enter a name.");
+        return;
+    }
+
     try {
         await createEmployee({
             name: newName,
@@ -206,9 +211,9 @@ const Employees: React.FC = () => {
       }
   };
 
-  const filteredEmployees = employees.filter(emp => 
-    emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    emp.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  const filteredEmployees = employees.filter(emp =>
+    (emp.name && emp.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (emp.role && emp.role.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (emp.designation && emp.designation.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -258,10 +263,10 @@ const Employees: React.FC = () => {
                      <div className="p-5 md:p-6 flex flex-col sm:flex-row items-start justify-between gap-4">
                         <div className="flex items-center gap-4 w-full min-w-0">
                             <div className={`h-14 w-14 rounded-xl flex items-center justify-center font-bold text-xl shadow-inner border transition-colors flex-shrink-0 ${roleStyle}`}>
-                                {isTargetAdmin ? <Crown className="w-6 h-6"/> : isTargetManager ? <ShieldCheck className="w-6 h-6"/> : emp.name.charAt(0)}
+                                {isTargetAdmin ? <Crown className="w-6 h-6"/> : isTargetManager ? <ShieldCheck className="w-6 h-6"/> : (emp.name ? emp.name.charAt(0) : '?')}
                             </div>
                             <div className="min-w-0 flex-1">
-                                <h3 className="font-bold text-slate-800 text-lg leading-tight truncate">{emp.name}</h3>
+                                <h3 className="font-bold text-slate-800 text-lg leading-tight truncate">{emp.name || 'No Name Provided'}</h3>
                                 {emp.designation && <p className="text-sm font-medium text-primary mb-1 truncate">{emp.designation}</p>}
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wide whitespace-nowrap ${isTargetAdmin ? 'bg-purple-50 text-purple-700' : isTargetManager ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-500'}`}>

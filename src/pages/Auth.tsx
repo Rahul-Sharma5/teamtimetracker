@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { getEmployees, createEmployee, updateEmployeePassword, getEmployeeByPhone, getEmployeeByEmail } from '../services/firestore';
 import { auth } from '../firebase';
-import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, GoogleAuthProvider, OAuthProvider, signInWithPopup } from 'firebase/auth';
 import { Employee } from '../types';
 import { 
   ShieldCheck, 
@@ -178,6 +178,70 @@ const Auth: React.FC = () => {
       }
     } catch (err: any) {
       setError(err.message || "Google Authentication failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Microsoft Auth ---
+  const handleMicrosoftAuth = async () => {
+    setLoading(true);
+    setError(null);
+    const provider = new OAuthProvider('microsoft.com');
+
+    // [FIX] Handle Single Tenant Error (AADSTS50194):
+    // If your Azure App is registered as "Accounts in this organizational directory only (Single tenant)",
+    // you MUST specify your Tenant ID (Directory ID) here.
+    // Find it in Azure Portal > App Registrations > Overview.
+    const tenantId = "5f7db143-94fd-41d2-9c87-182a7a9e3162"; // <--- REPLACE THIS WITH YOUR ACTUAL TENANT ID
+
+    if (tenantId && tenantId !== "5f7db143-94fd-41d2-9c87-182a7a9e3162") {
+      provider.setCustomParameters({
+        tenant: tenantId,
+        prompt: 'select_account' 
+      });
+    }
+
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      if (!user.email) throw new Error("Microsoft account must have an email.");
+
+      const existingUser = await getEmployeeByEmail(user.email);
+      
+      if (existingUser) {
+        if (existingUser.status === 'inactive') throw new Error("Account inactive. Contact support.");
+        setCurrentUser(existingUser);
+        navigate('/dashboard'); 
+      } else {
+        const roleToAssign = isFirstUser ? 'Admin' : 'Employee';
+        const newUser: Omit<Employee, 'id'> = {
+          name: user.displayName || "New User",
+          email: user.email,
+          phone: user.phoneNumber || "",
+          password: Math.random().toString(36).slice(-8), 
+          role: roleToAssign,
+          status: 'active',
+          joiningDate: new Date().toISOString().split('T')[0],
+          designation: roleToAssign === 'Admin' ? 'System Admin' : 'Member',
+          avatarUrl: user.photoURL || ""
+        };
+        const id = await createEmployee(newUser);
+        setCurrentUser({ ...newUser, id });
+        navigate('/dashboard'); 
+      }
+    } catch (err: any) {
+      console.error("Microsoft Auth Error:", err);
+      // Detailed error handling for common Azure AD issues
+      if (err.message && err.message.includes("AADSTS50194")) {
+        setError("Configuration Error: App is Single Tenant but accessed as Multi-Tenant. Please set the 'tenantId' variable in the code.");
+      } else if (err.message && err.message.includes("AADSTS900561")) {
+        setError("Azure Config Error: 'The endpoint only accepts POST requests'. Go to Azure Portal > Authentication. Ensure Platform is 'Web' (not SPA/Mobile) and check 'ID tokens' under Implicit Grant.");
+      } else if (err.message && (err.message.includes("AADSTS7000215") || err.message.includes("auth/invalid-credential"))) {
+        setError("Setup Error: Invalid Client Secret in Firebase Console. You likely pasted the 'Secret ID' instead of the 'Value' from Azure. Generate a new secret in Azure and update Firebase.");
+      } else {
+        setError(err.message || "Microsoft Authentication failed.");
+      }
     } finally {
       setLoading(false);
     }
@@ -461,17 +525,43 @@ const Auth: React.FC = () => {
 
               {/* Social Login Area */}
               {(authMode === 'login' || authMode === 'signup') && (
-                <div className="space-y-4 mb-8">
-                  <button onClick={handleGoogleAuth} disabled={loading} className="w-full h-12 flex items-center justify-center gap-3 bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all font-bold text-slate-700 text-sm shadow-sm active:scale-[0.98]">
-                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-                    Continue with Google
+              <div className="space-y-4 mb-8">
+                <div className="flex gap-3">
+                  {/* Google Button (unchanged) */}
+                  <button
+                    onClick={handleGoogleAuth}
+                    disabled={loading}
+                    className="w-1/2 h-12 flex items-center justify-center gap-3 bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all font-bold text-slate-700 text-sm shadow-sm active:scale-[0.98]"
+                  >
+                    <img
+                      src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                      className="w-5 h-5"
+                      alt="Google"
+                    />
+                    Google
                   </button>
-                  <div className="flex items-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    <div className="flex-1 h-px bg-slate-100"></div>
-                    <span>or</span>
-                    <div className="flex-1 h-px bg-slate-100"></div>
-                  </div>
+
+                  {/* Microsoft Button */}
+                  <button
+                    onClick={handleMicrosoftAuth}
+                    disabled={loading}
+                    className="w-1/2 h-12 flex items-center justify-center gap-3 bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all font-bold text-slate-700 text-sm shadow-sm active:scale-[0.98]"
+                  >
+                    <img
+                      src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg"
+                      className="w-5 h-5"
+                      alt="Microsoft"
+                    />
+                    Microsoft
+                  </button>
                 </div>
+
+                <div className="flex items-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  <div className="flex-1 h-px bg-slate-100"></div>
+                  <span>or</span>
+                  <div className="flex-1 h-px bg-slate-100"></div>
+                </div>
+              </div>
               )}
 
               <div className="transition-all duration-300">

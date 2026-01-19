@@ -188,13 +188,9 @@ const Auth: React.FC = () => {
     setError(null);
     const provider = new OAuthProvider('microsoft.com');
 
-    // [FIX] Handle Single Tenant Error (AADSTS50194):
-    // If your Azure App is registered as "Accounts in this organizational directory only (Single tenant)",
-    // you MUST specify your Tenant ID (Directory ID) here.
-    // Find it in Azure Portal > App Registrations > Overview.
-    const tenantId = "5f7db143-94fd-41d2-9c87-182a7a9e3162"; // <--- REPLACE THIS WITH YOUR ACTUAL TENANT ID
+    const tenantId = import.meta.env.VITE_MS_TENANT_ID; 
 
-    if (tenantId && tenantId !== "5f7db143-94fd-41d2-9c87-182a7a9e3162") {
+    if (tenantId) {
       provider.setCustomParameters({
         tenant: tenantId,
         prompt: 'select_account' 
